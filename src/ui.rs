@@ -142,7 +142,7 @@ fn draw_browser(f: &mut Frame, state: &AppState) {
         ),
         Span::styled(" │ ", Style::default().fg(theme.border)),
         Span::styled(
-            "q:quit  j/k:nav  enter:open  t:theme  ?:help",
+            "?:help",
             Style::default().fg(theme.text_muted),
         ),
     ]);
@@ -237,7 +237,7 @@ fn draw_reader(f: &mut Frame, state: &AppState) {
         ),
         Span::styled(" │ ", Style::default().fg(theme.border)),
         Span::styled(
-            "q:quit  bksp:back  j/k:scroll  t:theme  ?:help",
+            "?:help",
             Style::default().fg(theme.text_muted),
         ),
     ]);
@@ -314,6 +314,7 @@ fn draw_help(f: &mut Frame, state: &AppState) {
         ("G / End",      "Go to bottom"),
         ("Enter",        "Open file"),
         ("Backspace",    "Back to browser"),
+        ("e",            "Edit in $EDITOR"),
         ("t",            "Theme picker"),
         ("?",            "Toggle help"),
         ("q / Ctrl-c",   "Quit"),

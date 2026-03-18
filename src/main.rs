@@ -8,6 +8,7 @@ use std::env;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
+use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -168,6 +169,24 @@ fn main() -> io::Result<()> {
                                     }
                                     KeyCode::Char('t') => state.open_theme_picker(),
                                     KeyCode::Char('?') => state.open_help(),
+                                    KeyCode::Char('e') => {
+                                        if let Some(ref path) = state.file_path {
+                                            let editor = env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+                                            // Leave TUI, run editor, restore TUI
+                                            disable_raw_mode()?;
+                                            execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+                                            let _ = Command::new(&editor)
+                                                .arg(path)
+                                                .status();
+                                            enable_raw_mode()?;
+                                            execute!(terminal.backend_mut(), EnterAlternateScreen)?;
+                                            terminal.clear()?;
+                                            // Reload file content
+                                            if let Ok(new_content) = fs::read_to_string(path) {
+                                                state.content = new_content;
+                                            }
+                                        }
+                                    }
                                     KeyCode::Char('j') | KeyCode::Down => state.scroll_down(1),
                                     KeyCode::Char('k') | KeyCode::Up => state.scroll_up(1),
                                     KeyCode::Char('d') if ctrl => state.scroll_down(20),
