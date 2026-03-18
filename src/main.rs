@@ -120,12 +120,12 @@ fn main() -> io::Result<()> {
                                         let h = terminal.size()?.height.saturating_sub(6) as usize;
                                         state.browser.adjust_scroll(h);
                                     }
-                                    KeyCode::Char('d') if ctrl => {
+                                    KeyCode::Char('f') if ctrl => {
                                         let h = terminal.size()?.height.saturating_sub(6) as usize;
                                         state.browser.select_down_n(h);
                                         state.browser.adjust_scroll(h);
                                     }
-                                    KeyCode::Char('u') if ctrl => {
+                                    KeyCode::Char('b') if ctrl => {
                                         let h = terminal.size()?.height.saturating_sub(6) as usize;
                                         state.browser.select_up_n(h);
                                         state.browser.adjust_scroll(h);
@@ -197,13 +197,13 @@ fn main() -> io::Result<()> {
                                     }
                                     KeyCode::Char('j') | KeyCode::Down => state.scroll_down(1),
                                     KeyCode::Char('k') | KeyCode::Up => state.scroll_up(1),
-                                    KeyCode::Char('d') if ctrl => {
+                                    KeyCode::Char('f') if ctrl => {
                                         let h = terminal.size()?.height.saturating_sub(6) as usize;
-                                        state.scroll_down(h / 2);
+                                        state.scroll_down(h);
                                     }
-                                    KeyCode::Char('u') if ctrl => {
+                                    KeyCode::Char('b') if ctrl => {
                                         let h = terminal.size()?.height.saturating_sub(6) as usize;
-                                        state.scroll_up(h / 2);
+                                        state.scroll_up(h);
                                     }
                                     KeyCode::PageDown => {
                                         let h = terminal.size()?.height.saturating_sub(6) as usize;

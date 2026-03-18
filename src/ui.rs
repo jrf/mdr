@@ -388,8 +388,8 @@ fn draw_help(f: &mut Frame, state: &AppState) {
     let help_lines = vec![
         ("j / Down",     "Scroll down / Select next"),
         ("k / Up",       "Scroll up / Select previous"),
-        ("Ctrl-d",       "Page down"),
-        ("Ctrl-u",       "Page up"),
+        ("Ctrl-f",       "Page down"),
+        ("Ctrl-b",       "Page up"),
         ("g / Home",     "Go to top"),
         ("G / End",      "Go to bottom"),
         ("Enter",        "Open file"),
