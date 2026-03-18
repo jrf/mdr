@@ -255,7 +255,7 @@ fn draw_theme_picker(f: &mut Frame, state: &AppState) {
     let area = f.area();
 
     let height = ALL_THEMES.len() as u16 + 4;
-    let width = 30;
+    let width = 38;
     let popup = centered_rect(width, height, area);
 
     f.render_widget(Clear, popup);
