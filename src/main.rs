@@ -7,7 +7,8 @@ use std::env;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
@@ -20,11 +21,6 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 
 use state::AppState;
-
-enum AppEvent {
-    FileChanged,
-    Terminal(Event),
-}
 
 fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -41,17 +37,17 @@ fn main() -> io::Result<()> {
     let content = fs::read_to_string(&file_path)?;
     let mut state = AppState::new(Some(file_path.clone()), content);
 
-    // Event channel
-    let (tx, rx) = mpsc::channel::<AppEvent>();
+    // File change flag (set by watcher, cleared by main loop)
+    let file_dirty = Arc::new(AtomicBool::new(false));
 
     // File watcher
-    let tx_watcher = tx.clone();
+    let flag = file_dirty.clone();
     let watch_path = file_path.clone();
     let mut watcher: RecommendedWatcher =
         notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
             if let Ok(event) = res {
                 if event.kind.is_modify() {
-                    let _ = tx_watcher.send(AppEvent::FileChanged);
+                    flag.store(true, Ordering::Relaxed);
                 }
             }
         })
@@ -64,14 +60,6 @@ fn main() -> io::Result<()> {
         )
         .expect("failed to watch file");
 
-    // Terminal input thread
-    let tx_input = tx.clone();
-    std::thread::spawn(move || loop {
-        if let Ok(ev) = event::read() {
-            let _ = tx_input.send(AppEvent::Terminal(ev));
-        }
-    });
-
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -80,33 +68,58 @@ fn main() -> io::Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     // Main loop
+    let mut needs_redraw = true;
     loop {
-        terminal.draw(|f| ui::draw(f, &state))?;
+        if needs_redraw {
+            terminal.draw(|f| ui::draw(f, &state))?;
+            needs_redraw = false;
+        }
 
-        match rx.recv_timeout(Duration::from_millis(50)) {
-            Ok(AppEvent::FileChanged) => {
-                if let Ok(new_content) = fs::read_to_string(&file_path) {
+        // Check for file changes (coalesces all watcher events automatically)
+        if file_dirty.swap(false, Ordering::Relaxed) {
+            if let Ok(new_content) = fs::read_to_string(&file_path) {
+                if new_content != state.content {
                     state.content = new_content;
+                    needs_redraw = true;
                 }
             }
-            Ok(AppEvent::Terminal(Event::Key(key))) => match key.code {
-                KeyCode::Char('q') => break,
-                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => break,
-                KeyCode::Char('j') | KeyCode::Down => state.scroll_down(1),
-                KeyCode::Char('k') | KeyCode::Up => state.scroll_up(1),
-                KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    state.scroll_down(20)
+        }
+
+        // Poll for terminal events
+        if event::poll(Duration::from_millis(50))? {
+            if let Ok(ev) = event::read() {
+                match ev {
+                    Event::Key(key) => {
+                        needs_redraw = true;
+                        match key.code {
+                            KeyCode::Char('q') => break,
+                            KeyCode::Char('c')
+                                if key.modifiers.contains(KeyModifiers::CONTROL) =>
+                            {
+                                break
+                            }
+                            KeyCode::Char('j') | KeyCode::Down => state.scroll_down(1),
+                            KeyCode::Char('k') | KeyCode::Up => state.scroll_up(1),
+                            KeyCode::Char('d')
+                                if key.modifiers.contains(KeyModifiers::CONTROL) =>
+                            {
+                                state.scroll_down(20)
+                            }
+                            KeyCode::Char('u')
+                                if key.modifiers.contains(KeyModifiers::CONTROL) =>
+                            {
+                                state.scroll_up(20)
+                            }
+                            KeyCode::Char('g') => state.scroll_top(),
+                            KeyCode::Char('G') => state.scroll_bottom(),
+                            KeyCode::Char('t') => state.cycle_theme(),
+                            _ => needs_redraw = false,
+                        }
+                    }
+                    Event::Resize(_, _) => needs_redraw = true,
+                    _ => {}
                 }
-                KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    state.scroll_up(20)
-                }
-                KeyCode::Char('g') => state.scroll_top(),
-                KeyCode::Char('G') => state.scroll_bottom(),
-                KeyCode::Char('t') => state.cycle_theme(),
-                _ => {}
-            },
-            Ok(AppEvent::Terminal(Event::Resize(_, _))) => {}
-            _ => {}
+            }
         }
     }
 

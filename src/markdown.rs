@@ -13,6 +13,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
     let mut opts = Options::empty();
     opts.insert(Options::ENABLE_STRIKETHROUGH);
     opts.insert(Options::ENABLE_TABLES);
+    opts.insert(Options::ENABLE_TASKLISTS);
 
     let parser = Parser::new_ext(source, opts);
     let mut lines: Vec<StyledLine<'static>> = Vec::new();
@@ -199,6 +200,15 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                 }
 
                 current_spans.push(Span::styled(format!("`{}`", text), style));
+            }
+            Event::TaskListMarker(checked) => {
+                let marker = if checked { "  [x] " } else { "  [ ] " };
+                list_indent = marker.len();
+                current_spans.push(Span::styled(
+                    marker.to_string(),
+                    Style::default().fg(theme.accent),
+                ));
+                list_item_first_para = false;
             }
             Event::SoftBreak | Event::HardBreak => {
                 flush_line(&mut lines, &mut current_spans);
