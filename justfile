@@ -15,6 +15,7 @@ run *ARGS:
 # Install to ~/.local/bin
 install: release
     cp target/release/meld ~/.local/bin/
+    codesign -s - ~/.local/bin/meld
 
 # Uninstall from ~/.local/bin
 uninstall:
