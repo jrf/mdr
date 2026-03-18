@@ -1,7 +1,7 @@
-use ratatui::layout::{Constraint, Layout};
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Padding, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph};
 use ratatui::Frame;
 
 use crate::markdown::parse_markdown;
@@ -12,6 +12,23 @@ pub fn draw(f: &mut Frame, state: &AppState) {
     match state.mode {
         AppMode::Browser => draw_browser(f, state),
         AppMode::Reader => draw_reader(f, state),
+        AppMode::ThemePicker { .. } => {
+            // Draw the underlying mode first, then overlay
+            if let AppMode::ThemePicker { previous_mode, .. } = state.mode {
+                match previous_mode {
+                    crate::state::PreviousMode::Browser => draw_browser(f, state),
+                    crate::state::PreviousMode::Reader => draw_reader(f, state),
+                }
+            }
+            draw_theme_picker(f, state);
+        }
+        AppMode::Help { previous_mode } => {
+            match previous_mode {
+                crate::state::PreviousMode::Browser => draw_browser(f, state),
+                crate::state::PreviousMode::Reader => draw_reader(f, state),
+            }
+            draw_help(f, state);
+        }
     }
 }
 
