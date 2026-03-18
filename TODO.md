@@ -2,25 +2,36 @@
 
 ## Now
 
-- [x] Use `unicode-width` for line length calculations (dependency exists but `current_line_len` uses `.len()`, breaks on wide/CJK chars)
-- [x] Use actual visible height for `Ctrl-d`/`Ctrl-u` page size in reader mode (currently hardcoded to 20)
-- [x] Clamp `scroll_bottom` properly instead of setting `usize::MAX`
-- [x] Render tables (pulldown-cmark parses them but they're silently dropped)
-- [x] Render strikethrough
+- [ ] Toggle checkboxes in-place (`x` or `Space` on a task line) — flip `[ ]` / `[x]` and write back to file
+- [ ] Task-aware navigation (`]t` / `[t` to jump between unchecked tasks)
+- [ ] Task summary in status bar (e.g., `3/7 tasks`)
 
 ## Next
 
+- [ ] Filter view — `f` to collapse document to only unchecked task lines (with heading context)
+- [ ] Show task counts next to `.md` files in browser mode (e.g., `project-plan.md  [3/7]`)
+- [ ] Sort/group browser by files with open tasks
+- [ ] File watcher notification — flash `[updated]` in status bar when file reloads
 - [ ] Cache parsed markdown — only re-parse when content changes, not on every scroll/redraw
-- [x] Search (`/`) with highlighted matches and `n`/`N` navigation
+
+## Later
+
+- [ ] Append mode — `a` to quick-add a `- [ ] task` without opening an editor
 - [ ] Syntax highlighting in fenced code blocks (syntect or tree-sitter)
 - [ ] Mouse scroll support (crossterm already emits mouse events)
 - [ ] Accept stdin (`cat file.md | meld`)
 - [ ] Persist selected theme to config file (`~/.config/meld/` on Linux, `~/Library/Application Support/meld/` on macOS)
-
-## Later
-
 - [ ] Follow markdown links — open URLs in browser, jump to local `.md` files
 - [ ] Browser preview pane (split layout showing selected file)
 - [ ] Fuzzy search/filter in browser mode
 - [ ] Scrollbar widget
 - [ ] Footnote rendering
+
+## Done
+
+- [x] Use `unicode-width` for line length calculations
+- [x] Use actual visible height for `Ctrl-d`/`Ctrl-u` page size in reader mode
+- [x] Clamp `scroll_bottom` properly instead of setting `usize::MAX`
+- [x] Render tables
+- [x] Render strikethrough
+- [x] Search (`/`) with highlighted matches and `n`/`N` navigation
