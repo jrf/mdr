@@ -8,8 +8,11 @@ A terminal markdown reader with live file watching.
 
 - Renders markdown with styled headings, bold, italic, code blocks, blockquotes, lists, task lists, and horizontal rules
 - Live reload — file changes are reflected instantly
-- Vim-style scrolling (`j`/`k`, `g`/`G`, `Ctrl-d`/`Ctrl-u`)
+- Vim-style scrolling (`j`/`k`, `g`/`G`, `Ctrl-f`/`Ctrl-b`)
+- File picker overlay — press `f`, type to filter, enter to open
+- Search — `/` to search, `n`/`N` to cycle matches
 - Multiple color themes, cycled with `t`
+- External editor — press `e` to open in `$EDITOR`
 - Word wrapping with list continuation indent
 
 ## Install
@@ -38,11 +41,16 @@ mdr <file.md>
 |-----|--------|
 | `j` / `↓` | Scroll down |
 | `k` / `↑` | Scroll up |
-| `Ctrl-d` | Page down |
-| `Ctrl-u` | Page up |
-| `g` | Go to top |
-| `G` | Go to bottom |
+| `Ctrl-f` / `PageDown` | Page down |
+| `Ctrl-b` / `PageUp` | Page up |
+| `g` / `Home` | Go to top |
+| `G` / `End` | Go to bottom |
+| `/` | Search |
+| `n` / `N` | Next/previous match |
+| `f` | File picker |
 | `t` | Cycle theme |
+| `e` | Open in `$EDITOR` |
+| `?` | Help |
 | `q` / `Ctrl-c` | Quit |
 
 ### Themes
