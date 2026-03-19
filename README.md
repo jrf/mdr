@@ -15,6 +15,9 @@ A terminal markdown reader with live file watching.
 ## Install
 
 ```bash
+# Directly from GitHub
+cargo install --git https://github.com/jrf/mdr
+
 # With just
 just install
 
