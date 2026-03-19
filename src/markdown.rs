@@ -8,6 +8,8 @@ use crate::theme::Theme;
 pub struct StyledLine<'a> {
     pub line: Line<'a>,
     pub is_blank: bool,
+    /// Source line number for task list items (used for checkbox toggling)
+    pub source_line: Option<usize>,
 }
 
 pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<'static>> {
@@ -35,11 +37,14 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
     let mut table_row: Vec<String> = Vec::new();
     let mut table_alignments: Vec<pulldown_cmark::Alignment> = Vec::new();
 
-    for event in parser {
+    // Track source line for task list items
+    let mut task_source_line: Option<usize> = None;
+
+    for (event, range) in parser.into_offset_iter() {
         match event {
             Event::Start(tag) => match tag {
                 Tag::Heading { level, .. } => {
-                    flush_line(&mut lines, &mut current_spans);
+                    flush_line(&mut lines, &mut current_spans, task_source_line);
                     in_heading = Some(level as u8);
                 }
                 Tag::Paragraph => {}
@@ -53,9 +58,10 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                     list_stack.push(start);
                 }
                 Tag::Item => {
-                    flush_line(&mut lines, &mut current_spans);
+                    flush_line(&mut lines, &mut current_spans, task_source_line);
                     in_list_item = true;
                     list_item_first_para = true;
+                    task_source_line = None;
                     // Calculate indent based on nesting depth (depth >= 2 means nested)
                     let depth = list_stack.len();
                     list_indent = if depth > 1 { (depth - 1) * 4 + 2 } else { 2 };
@@ -74,12 +80,12 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
             },
             Event::End(tag_end) => match tag_end {
                 TagEnd::Heading(_) => {
-                    flush_line(&mut lines, &mut current_spans);
+                    flush_line(&mut lines, &mut current_spans, None);
                     push_blank(&mut lines);
                     in_heading = None;
                 }
                 TagEnd::Paragraph => {
-                    flush_line(&mut lines, &mut current_spans);
+                    flush_line(&mut lines, &mut current_spans, task_source_line);
                     if !in_list_item {
                         push_blank(&mut lines);
                     }
@@ -98,8 +104,9 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                     }
                 }
                 TagEnd::Item => {
-                    flush_line(&mut lines, &mut current_spans);
+                    flush_line(&mut lines, &mut current_spans, task_source_line);
                     in_list_item = false;
+                    task_source_line = None;
                 }
                 TagEnd::Emphasis => italic = false,
                 TagEnd::Strong => bold = false,
@@ -125,6 +132,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                             Style::default().fg(theme.border),
                         )),
                         is_blank: false,
+                        source_line: None,
                     });
                 }
                 TagEnd::TableRow => {
@@ -172,7 +180,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                             Style::default().fg(theme.text_muted),
                         ));
                         current_spans.push(Span::styled(line_text.to_string(), style));
-                        flush_line(&mut lines, &mut current_spans);
+                        flush_line(&mut lines, &mut current_spans, None);
                     }
                 } else if in_blockquote {
                     current_spans.push(Span::styled(
@@ -219,7 +227,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                     for word in words {
                         let wlen = word.width();
                         if line_len > 0 && line_len + 1 + wlen > max_width {
-                            flush_line(&mut lines, &mut current_spans);
+                            flush_line(&mut lines, &mut current_spans, task_source_line);
                             // Add continuation indent for list items
                             if in_list_item && list_indent > 0 {
                                 let indent = " ".repeat(list_indent);
@@ -265,6 +273,8 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                 current_spans.push(Span::styled(format!("`{}`", text), style));
             }
             Event::TaskListMarker(checked) => {
+                // Compute source line number from byte offset
+                task_source_line = Some(source[..range.start].bytes().filter(|&b| b == b'\n').count());
                 let marker = if checked { "  [x] " } else { "  [ ] " };
                 list_indent = marker.width();
                 current_spans.push(Span::styled(
@@ -274,10 +284,10 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                 list_item_first_para = false;
             }
             Event::SoftBreak | Event::HardBreak => {
-                flush_line(&mut lines, &mut current_spans);
+                flush_line(&mut lines, &mut current_spans, task_source_line);
             }
             Event::Rule => {
-                flush_line(&mut lines, &mut current_spans);
+                flush_line(&mut lines, &mut current_spans, task_source_line);
                 let rule = "─".repeat(width.saturating_sub(2) as usize);
                 lines.push(StyledLine {
                     line: Line::from(Span::styled(
@@ -285,6 +295,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                         Style::default().fg(theme.border),
                     )),
                     is_blank: false,
+                    source_line: None,
                 });
                 push_blank(&mut lines);
             }
@@ -292,7 +303,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
         }
     }
 
-    flush_line(&mut lines, &mut current_spans);
+    flush_line(&mut lines, &mut current_spans, task_source_line);
 
     // Remove trailing blank lines
     while lines.last().map_or(false, |l| l.is_blank) {
@@ -341,6 +352,7 @@ fn emit_table_row(
     lines.push(StyledLine {
         line: Line::from(spans),
         is_blank: false,
+        source_line: None,
     });
 }
 
@@ -352,12 +364,14 @@ fn push_blank(lines: &mut Vec<StyledLine<'static>>) {
     lines.push(StyledLine {
         line: Line::default(),
         is_blank: true,
+        source_line: None,
     });
 }
 
 fn flush_line(
     lines: &mut Vec<StyledLine<'static>>,
     spans: &mut Vec<Span<'static>>,
+    source_line: Option<usize>,
 ) {
     if spans.is_empty() {
         return;
@@ -366,5 +380,6 @@ fn flush_line(
     lines.push(StyledLine {
         line,
         is_blank: false,
+        source_line,
     });
 }

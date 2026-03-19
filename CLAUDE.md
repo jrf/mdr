@@ -23,13 +23,13 @@ mdr is a terminal markdown reader built with Rust, ratatui, and crossterm. It re
 
 **Single-threaded event loop** (`main.rs`): Uses `crossterm::event::poll` for input and an `AtomicBool` flag (set by the notify file watcher) for file changes. Only redraws when state actually changes. Global keybindings (`q`, `Ctrl-c`) are handled first, then mode-specific bindings are dispatched.
 
-**Rendering pipeline**: `ui::draw` always renders the reader first, then overlays the active modal (file picker, theme picker, or help) on top. The reader calls `markdown::parse_markdown` which converts the full markdown source into a `Vec<StyledLine>` using pulldown-cmark. The UI then slices this by scroll offset and renders via ratatui. There is no caching — the entire document is re-parsed on every redraw.
+**Rendering pipeline**: `ui::draw` always renders the reader first, then overlays the active modal (file picker, theme picker, or help) on top. The reader calls `markdown::parse_markdown` which converts the full markdown source into a `Vec<StyledLine>` using pulldown-cmark. The UI then slices this by scroll offset and renders via ratatui. Parsed output is cached in `AppState` and only re-parsed when content, theme, or terminal width changes.
 
 **Key modules**:
 - `main.rs` — event loop, file watcher setup, terminal init/cleanup, external editor launch.
-- `state.rs` — `AppState` holds mode, scroll position, theme, file content, search state, and `BrowserState`. Mode transitions and scroll/search logic live here.
+- `state.rs` — `AppState` holds mode, cursor/scroll position, theme, file content, search state, parsed line cache, and `BrowserState`. Cursor-based navigation (`cursor_down`/`cursor_up`) with viewport following. Checkbox toggling (`toggle_checkbox`) finds the source line via `StyledLine.source_line`, flips `[ ]`/`[x]` in the content, and writes back to disk.
 - `browser.rs` — `BrowserState` manages directory listing (dirs first, then `.md` files, hidden files excluded), selection, scroll, and type-to-filter for the file picker overlay.
-- `markdown.rs` — pulldown-cmark event loop producing styled, word-wrapped lines. Handles headings, code blocks, blockquotes, lists (ordered/unordered), task lists, inline formatting, and horizontal rules.
+- `markdown.rs` — pulldown-cmark event loop (using `into_offset_iter()`) producing styled, word-wrapped lines. Handles headings, code blocks, blockquotes, lists (ordered/unordered), task lists, inline formatting, and horizontal rules. Each `StyledLine` carries an optional `source_line` for task items, enabling checkbox toggling.
 - `ui.rs` — ratatui rendering: reader with status bar, plus centered popup overlays for file picker, theme picker, and help. Search highlighting is applied post-parse in `highlight_search`.
 - `theme.rs` — six color themes using 256-color indexed palette (`ALL_THEMES` array). Default is "tokyo night moon" (index 5). Themes are cycled at runtime with `t`.
 

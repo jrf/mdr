@@ -39,12 +39,13 @@ mdr <file.md>
 
 | Key | Action |
 |-----|--------|
-| `j` / `↓` | Scroll down |
-| `k` / `↑` | Scroll up |
+| `j` / `↓` | Move cursor down |
+| `k` / `↑` | Move cursor up |
 | `Ctrl-f` / `PageDown` | Page down |
 | `Ctrl-b` / `PageUp` | Page up |
 | `g` / `Home` | Go to top |
 | `G` / `End` | Go to bottom |
+| `x` / `Space` | Toggle task checkbox |
 | `/` | Search |
 | `n` / `N` | Next/previous match |
 | `f` | File picker |

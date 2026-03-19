@@ -1,6 +1,6 @@
 use ratatui::style::Color;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[allow(dead_code)]
 pub struct Theme {
     pub border: Color,
@@ -11,6 +11,7 @@ pub struct Theme {
     pub text_muted: Color,
     pub heading: Color,
     pub error: Color,
+    pub cursor_bg: Color,
 }
 
 pub const ALL_THEMES: &[(&str, Theme)] = &[
@@ -25,6 +26,7 @@ pub const ALL_THEMES: &[(&str, Theme)] = &[
             text_muted: Color::Indexed(240),
             heading: Color::Indexed(255),
             error: Color::Indexed(196),
+            cursor_bg: Color::Indexed(97),  // muted magenta
         },
     ),
     (
@@ -38,6 +40,7 @@ pub const ALL_THEMES: &[(&str, Theme)] = &[
             text_muted: Color::Indexed(238),
             heading: Color::Indexed(255),
             error: Color::Indexed(196),
+            cursor_bg: Color::Indexed(239),  // medium gray
         },
     ),
     (
@@ -51,6 +54,7 @@ pub const ALL_THEMES: &[(&str, Theme)] = &[
             text_muted: Color::Indexed(60),
             heading: Color::Indexed(195),
             error: Color::Indexed(196),
+            cursor_bg: Color::Indexed(24),  // medium navy
         },
     ),
     (
@@ -64,6 +68,7 @@ pub const ALL_THEMES: &[(&str, Theme)] = &[
             text_muted: Color::Indexed(137),
             heading: Color::Indexed(230),
             error: Color::Indexed(196),
+            cursor_bg: Color::Indexed(94),  // muted brown
         },
     ),
     (
@@ -77,6 +82,7 @@ pub const ALL_THEMES: &[(&str, Theme)] = &[
             text_muted: Color::Indexed(59),
             heading: Color::Indexed(194),
             error: Color::Indexed(196),
+            cursor_bg: Color::Indexed(23),  // dark teal-green
         },
     ),
     (
@@ -90,6 +96,7 @@ pub const ALL_THEMES: &[(&str, Theme)] = &[
             text_muted: Color::Indexed(60),
             heading: Color::Indexed(195),
             error: Color::Indexed(210),
+            cursor_bg: Color::Indexed(60),  // muted purple
         },
     ),
 ];

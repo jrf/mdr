@@ -3,8 +3,8 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph};
 use ratatui::Frame;
+use unicode_width::UnicodeWidthStr;
 
-use crate::markdown::parse_markdown;
 use crate::state::{AppMode, AppState};
 use crate::theme::ALL_THEMES;
 
@@ -101,25 +101,43 @@ fn draw_reader(f: &mut Frame, state: &mut AppState) {
 
     // Content area
     let content_area = chunks[0];
-    let styled_lines = parse_markdown(&state.content, theme, content_area.width);
-    let total_lines = styled_lines.len();
+    let parsed = state.get_parsed_lines(content_area.width);
+    let total_lines = parsed.len();
     let visible_height = content_area.height as usize;
 
     state.total_lines = total_lines;
     state.visible_height = visible_height;
 
     let scroll = state.scroll.min(total_lines.saturating_sub(visible_height));
+    let cursor = state.cursor;
 
-    let visible: Vec<Line> = styled_lines
-        .into_iter()
-        .skip(scroll)
+    let visible: Vec<Line> = state.cached_lines[scroll..]
+        .iter()
+        .enumerate()
         .take(visible_height)
-        .map(|sl| {
-            if state.search_query.is_empty() {
-                sl.line
+        .map(|(i, sl)| {
+            let mut line = if state.search_query.is_empty() {
+                sl.line.clone()
             } else {
-                highlight_search(sl.line, &state.search_query, theme)
+                highlight_search(sl.line.clone(), &state.search_query, theme)
+            };
+            // Highlight cursor line with a subtle background
+            if scroll + i == cursor {
+                let cursor_style = Style::default().bg(theme.cursor_bg);
+                for span in &mut line.spans {
+                    span.style = span.style.bg(theme.cursor_bg);
+                }
+                // Pad to full width so the highlight spans the line
+                let content_width: usize = line.spans.iter().map(|s| s.content.width()).sum();
+                let area_width = content_area.width as usize;
+                if content_width < area_width {
+                    line.spans.push(Span::styled(
+                        " ".repeat(area_width - content_width),
+                        cursor_style,
+                    ));
+                }
             }
+            line
         })
         .collect();
 
@@ -379,12 +397,13 @@ fn draw_help(f: &mut Frame, state: &AppState) {
     let area = f.area();
 
     let help_lines = vec![
-        ("j / Down",     "Scroll down / Select next"),
-        ("k / Up",       "Scroll up / Select previous"),
+        ("j / Down",     "Move cursor down / Select next"),
+        ("k / Up",       "Move cursor up / Select previous"),
         ("Ctrl-f",       "Page down"),
         ("Ctrl-b",       "Page up"),
         ("g / Home",     "Go to top"),
         ("G / End",      "Go to bottom"),
+        ("x / Space",    "Toggle task checkbox"),
         ("Enter",        "Open file"),
         ("/",            "Search"),
         ("n / N",        "Next / previous match"),
@@ -395,8 +414,13 @@ fn draw_help(f: &mut Frame, state: &AppState) {
         ("q / Ctrl-c",   "Quit"),
     ];
 
+    let max_content_width = help_lines
+        .iter()
+        .map(|(key, desc)| format!(" {:14}{}", key, desc).len())
+        .max()
+        .unwrap_or(0) as u16;
     let height = help_lines.len() as u16 + 4;
-    let width = 44;
+    let width = (max_content_width + 4).min(area.width.saturating_sub(4)); // +4 for borders + padding
     let popup = centered_rect(width, height, area);
 
     f.render_widget(Clear, popup);

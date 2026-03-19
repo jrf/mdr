@@ -165,26 +165,29 @@ fn main() -> io::Result<()> {
                                             }
                                         }
                                     }
-                                    KeyCode::Char('j') | KeyCode::Down => state.scroll_down(1),
-                                    KeyCode::Char('k') | KeyCode::Up => state.scroll_up(1),
+                                    KeyCode::Char('x') | KeyCode::Char(' ') => {
+                                        state.toggle_checkbox();
+                                    }
+                                    KeyCode::Char('j') | KeyCode::Down => state.cursor_down(1),
+                                    KeyCode::Char('k') | KeyCode::Up => state.cursor_up(1),
                                     KeyCode::Char('f') if ctrl => {
                                         let h = terminal.size()?.height.saturating_sub(6) as usize;
-                                        state.scroll_down(h);
+                                        state.cursor_down(h);
                                     }
                                     KeyCode::Char('b') if ctrl => {
                                         let h = terminal.size()?.height.saturating_sub(6) as usize;
-                                        state.scroll_up(h);
+                                        state.cursor_up(h);
                                     }
                                     KeyCode::PageDown => {
                                         let h = terminal.size()?.height.saturating_sub(6) as usize;
-                                        state.scroll_down(h);
+                                        state.cursor_down(h);
                                     }
                                     KeyCode::PageUp => {
                                         let h = terminal.size()?.height.saturating_sub(6) as usize;
-                                        state.scroll_up(h);
+                                        state.cursor_up(h);
                                     }
-                                    KeyCode::Home | KeyCode::Char('g') => state.scroll_top(),
-                                    KeyCode::End | KeyCode::Char('G') => state.scroll_bottom(),
+                                    KeyCode::Home | KeyCode::Char('g') => state.cursor_top(),
+                                    KeyCode::End | KeyCode::Char('G') => state.cursor_bottom(),
                                     _ => needs_redraw = false,
                                 },
                                 AppMode::FilePicker => match key.code {
