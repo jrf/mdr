@@ -44,6 +44,21 @@ fn setup_watcher(path: &PathBuf, flag: Arc<AtomicBool>) -> Option<RecommendedWat
     Some(watcher)
 }
 
+fn setup_dir_watcher(dir: &PathBuf, flag: Arc<AtomicBool>) -> Option<RecommendedWatcher> {
+    let mut watcher = notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
+        if let Ok(event) = res {
+            if event.kind.is_create() || event.kind.is_remove() {
+                flag.store(true, Ordering::Relaxed);
+            }
+        }
+    })
+    .ok()?;
+
+    watcher.watch(dir, RecursiveMode::NonRecursive).ok()?;
+
+    Some(watcher)
+}
+
 fn main() -> io::Result<()> {
     let file_arg = env::args().nth(1);
 
@@ -61,12 +76,17 @@ fn main() -> io::Result<()> {
 
     // File change flag (set by watcher, cleared by main loop)
     let file_dirty = Arc::new(AtomicBool::new(false));
+    let dir_dirty = Arc::new(AtomicBool::new(false));
 
     // Set up watcher if we started with a file
     let mut _watcher: Option<RecommendedWatcher> = state
         .file_path
         .as_ref()
         .and_then(|p| setup_watcher(p, file_dirty.clone()));
+
+    // Set up directory watcher for the file picker
+    let mut _dir_watcher: Option<RecommendedWatcher> =
+        Some(setup_dir_watcher(&state.browser.current_dir, dir_dirty.clone())).flatten();
 
     // Setup terminal
     enable_raw_mode()?;
@@ -93,6 +113,12 @@ fn main() -> io::Result<()> {
                     }
                 }
             }
+        }
+
+        // Check for directory changes (refresh file picker entries)
+        if dir_dirty.swap(false, Ordering::Relaxed) {
+            state.browser.refresh();
+            needs_redraw = true;
         }
 
         // Poll for terminal events
@@ -179,7 +205,17 @@ fn main() -> io::Result<()> {
                                                     .file_path
                                                     .as_ref()
                                                     .and_then(|p| setup_watcher(p, file_dirty.clone()));
+                                                _dir_watcher = setup_dir_watcher(
+                                                    &state.browser.current_dir,
+                                                    dir_dirty.clone(),
+                                                );
                                             }
+                                        } else {
+                                            // Navigated into a new directory — restart dir watcher
+                                            _dir_watcher = setup_dir_watcher(
+                                                &state.browser.current_dir,
+                                                dir_dirty.clone(),
+                                            );
                                         }
                                     }
                                     KeyCode::Esc => {

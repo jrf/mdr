@@ -2,6 +2,7 @@
 
 ## Now
 
+- [ ] Auto-refresh file picker when files are added/removed in the watched directory
 - [ ] Toggle checkboxes in-place (`x` or `Space` on a task line) — flip `[ ]` / `[x]` and write back to file
 - [ ] Task-aware navigation (`]t` / `[t` to jump between unchecked tasks)
 - [ ] Task summary in status bar (e.g., `3/7 tasks`)

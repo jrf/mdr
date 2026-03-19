@@ -131,6 +131,34 @@ impl BrowserState {
         }
     }
 
+    /// Reload directory contents, preserving filter and selection.
+    pub fn refresh(&mut self) {
+        let old_filter = self.filter.clone();
+        let selected_name = self
+            .filtered_indices
+            .get(self.selected)
+            .and_then(|&i| self.entries.get(i))
+            .map(|e| e.name.clone());
+
+        self.load_dir();
+        self.filter = old_filter;
+        self.rebuild_filter();
+
+        if let Some(name) = selected_name {
+            if let Some(pos) = self
+                .filtered_indices
+                .iter()
+                .position(|&i| self.entries[i].name == name)
+            {
+                self.selected = pos;
+            } else {
+                self.selected = self
+                    .selected
+                    .min(self.filtered_indices.len().saturating_sub(1));
+            }
+        }
+    }
+
     pub fn adjust_scroll(&mut self, visible_height: usize) {
         if self.selected < self.scroll_offset {
             self.scroll_offset = self.selected;
