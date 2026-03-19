@@ -27,7 +27,8 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
     let mut in_code_block = false;
     let mut in_blockquote = false;
     let mut in_list_item = false;
-    let mut list_number: Option<u64> = None;
+    // Stack of (ordered_start, next_number) for nested lists
+    let mut list_stack: Vec<Option<u64>> = Vec::new();
     let mut list_item_first_para = false;
     let mut list_indent: usize = 0;
     let mut in_table = false;
@@ -49,12 +50,15 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                     in_blockquote = true;
                 }
                 Tag::List(start) => {
-                    list_number = start;
+                    list_stack.push(start);
                 }
                 Tag::Item => {
                     flush_line(&mut lines, &mut current_spans);
                     in_list_item = true;
                     list_item_first_para = true;
+                    // Calculate indent based on nesting depth (depth >= 2 means nested)
+                    let depth = list_stack.len();
+                    list_indent = if depth > 1 { (depth - 1) * 4 + 2 } else { 2 };
                 }
                 Tag::Emphasis => italic = true,
                 Tag::Strong => bold = true,
@@ -88,8 +92,10 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                     in_blockquote = false;
                 }
                 TagEnd::List(_) => {
-                    list_number = None;
-                    push_blank(&mut lines);
+                    list_stack.pop();
+                    if list_stack.is_empty() {
+                        push_blank(&mut lines);
+                    }
                 }
                 TagEnd::Item => {
                     flush_line(&mut lines, &mut current_spans);
@@ -187,12 +193,15 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
 
                     // Emit bullet/number prefix for first text in a list item
                     if list_item_first_para {
-                        let bullet = if let Some(ref mut n) = list_number {
-                            let s = format!("  {}. ", n);
-                            *n += 1;
-                            s
-                        } else {
-                            "  • ".to_string()
+                        let depth = list_stack.len();
+                        let indent = if depth > 1 { " ".repeat((depth - 1) * 4) } else { String::new() };
+                        let bullet = match list_stack.last_mut() {
+                            Some(Some(n)) => {
+                                let s = format!("  {}{}. ", indent, n);
+                                *n += 1;
+                                s
+                            }
+                            _ => format!("  {}• ", indent),
                         };
                         list_indent = bullet.width();
                         current_spans.push(Span::styled(
@@ -235,12 +244,15 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
 
                 // Check if we need to emit bullet prefix first
                 if list_item_first_para {
-                    let bullet = if let Some(ref mut n) = list_number {
-                        let s = format!("  {}. ", n);
-                        *n += 1;
-                        s
-                    } else {
-                        "  • ".to_string()
+                    let depth = list_stack.len();
+                    let indent = if depth > 1 { " ".repeat((depth - 1) * 4) } else { String::new() };
+                    let bullet = match list_stack.last_mut() {
+                        Some(Some(n)) => {
+                            let s = format!("  {}{}. ", indent, n);
+                            *n += 1;
+                            s
+                        }
+                        _ => format!("  {}• ", indent),
                     };
                     list_indent = bullet.width();
                     current_spans.push(Span::styled(
