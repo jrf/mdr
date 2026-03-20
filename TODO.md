@@ -18,7 +18,7 @@
 
 ## Later
 
-- [ ] Explore inline `#tag` rendering with color-coded category labels (Obsidian-style)
+- [ ] Explore inline `#tag` rendering with color-coded category labels
 
 ## Done
 
