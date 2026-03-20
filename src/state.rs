@@ -265,8 +265,10 @@ impl Tab {
 
     pub fn fold_all(&mut self) {
         for sl in &self.cached_lines {
-            if let Some(ref text) = sl.heading_text {
-                self.folded_headings.insert(text.clone());
+            if sl.heading_level.is_some() {
+                if let Some(ref text) = sl.heading_text {
+                    self.folded_headings.insert(text.clone());
+                }
             }
         }
     }
@@ -281,27 +283,20 @@ impl Tab {
         }
 
         let mut indices = Vec::new();
-        let mut skip_until_level: Option<u8> = None;
+        // Track the nearest heading above the current line
+        let mut current_heading_folded = false;
         let mut kept_blank_after_fold = false;
 
         for (i, sl) in self.cached_lines.iter().enumerate() {
-            if let Some(level) = sl.heading_level {
-                if let Some(fold_level) = skip_until_level {
-                    if level <= fold_level {
-                        skip_until_level = None;
-                        kept_blank_after_fold = false;
-                    } else {
-                        continue;
-                    }
-                }
+            if sl.heading_level.is_some() {
+                // Headings are always shown
                 indices.push(i);
-                if let Some(ref text) = sl.heading_text {
-                    if self.folded_headings.contains(text) {
-                        skip_until_level = Some(level);
-                        kept_blank_after_fold = false;
-                    }
-                }
-            } else if skip_until_level.is_some() {
+                // Update fold state: is this heading folded?
+                current_heading_folded = sl.heading_text.as_ref()
+                    .map_or(false, |text| self.folded_headings.contains(text));
+                kept_blank_after_fold = false;
+            } else if current_heading_folded {
+                // Content under a folded heading — keep one blank line
                 if sl.is_blank && !kept_blank_after_fold {
                     indices.push(i);
                     kept_blank_after_fold = true;
