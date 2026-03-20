@@ -166,11 +166,22 @@ fn main() -> io::Result<()> {
                                         }
                                         state.close_tab();
                                     }
-                                    KeyCode::Esc if !state.tab().search_query.is_empty() => {
+                                    KeyCode::Esc => {
                                         let tab = state.tab_mut();
-                                        tab.search_query.clear();
-                                        tab.search_matches.clear();
-                                        tab.search_current = 0;
+                                        let had_filters = !tab.search_query.is_empty()
+                                            || tab.filter_tasks
+                                            || tab.tag_filter.is_some();
+                                        if had_filters {
+                                            tab.search_query.clear();
+                                            tab.search_matches.clear();
+                                            tab.search_current = 0;
+                                            tab.filter_tasks = false;
+                                            tab.tag_filter = None;
+                                            tab.cursor = 0;
+                                            tab.scroll = 0;
+                                        } else {
+                                            needs_redraw = false;
+                                        }
                                     }
                                     KeyCode::Char('f') if !ctrl => {
                                         state.browser.filter.clear();
