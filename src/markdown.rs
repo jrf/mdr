@@ -163,10 +163,13 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                 }
 
                 let style = if let Some(level) = in_heading {
-                    let color = match level {
-                        1 => theme.accent,
-                        2 => theme.heading,
-                        _ => theme.text_bright,
+                    let color = if level >= 3 {
+                        label_color(&heading_text_buf, &theme).unwrap_or(theme.text_bright)
+                    } else {
+                        match level {
+                            1 => theme.accent,
+                            _ => theme.heading,
+                        }
                     };
                     Style::default().fg(color).add_modifier(Modifier::BOLD)
                 } else if in_code_block {
@@ -406,6 +409,19 @@ fn flush_line(
         heading_text: None,
         source_line,
     });
+}
+
+fn label_color(heading_text: &str, theme: &Theme) -> Option<ratatui::style::Color> {
+    let text = heading_text.trim().to_lowercase();
+    match text.as_str() {
+        "bugs" | "bug" => Some(theme.labels.bugs),
+        "features" | "feature" => Some(theme.labels.features),
+        "improvements" | "improvement" => Some(theme.labels.improvements),
+        "refactor" | "refactoring" => Some(theme.labels.refactor),
+        "docs" | "documentation" => Some(theme.labels.docs),
+        "chore" | "chores" => Some(theme.labels.chore),
+        _ => None,
+    }
 }
 
 fn flush_line_heading(
