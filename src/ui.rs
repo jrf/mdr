@@ -93,6 +93,39 @@ fn render_entry_list(
     }
 }
 
+fn draw_tab_bar(f: &mut Frame, state: &AppState, area: Rect) {
+    let theme = state.theme;
+    let mut spans: Vec<Span> = Vec::new();
+    spans.push(Span::styled(" ", Style::default()));
+
+    for (i, tab) in state.tabs.iter().enumerate() {
+        let name = tab
+            .file_path
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "untitled".to_string());
+
+        if i == state.active_tab {
+            spans.push(Span::styled(
+                format!(" {} ", name),
+                Style::default()
+                    .fg(theme.text_bright)
+                    .bg(theme.cursor_bg)
+                    .add_modifier(Modifier::BOLD),
+            ));
+        } else {
+            spans.push(Span::styled(
+                format!(" {} ", name),
+                Style::default().fg(theme.text_dim),
+            ));
+        }
+        spans.push(Span::styled(" ", Style::default()));
+    }
+
+    f.render_widget(Paragraph::new(Line::from(spans)), area);
+}
+
 fn draw_reader(f: &mut Frame, state: &mut AppState) {
     let area = f.area();
     let theme = state.theme;
@@ -105,40 +138,62 @@ fn draw_reader(f: &mut Frame, state: &mut AppState) {
     let inner = outer_block.inner(area);
     f.render_widget(outer_block, area);
 
-    let chunks = Layout::vertical([
-        Constraint::Min(1),   // content
-        Constraint::Length(1), // status bar
-    ])
-    .split(inner);
+    let show_tabs = state.tabs.len() > 1;
+
+    let chunks = if show_tabs {
+        Layout::vertical([
+            Constraint::Length(1), // tab bar
+            Constraint::Min(1),   // content
+            Constraint::Length(1), // status bar
+        ])
+        .split(inner)
+    } else {
+        Layout::vertical([
+            Constraint::Length(0), // no tab bar
+            Constraint::Min(1),   // content
+            Constraint::Length(1), // status bar
+        ])
+        .split(inner)
+    };
+
+    // Tab bar
+    if show_tabs {
+        draw_tab_bar(f, state, chunks[0]);
+    }
 
     // Content area
-    let content_area = chunks[0];
-    let _parsed = state.get_parsed_lines(content_area.width);
-    let display_indices = state.visible_line_indices();
+    let content_area = chunks[1];
+    {
+        let tab = state.tab_mut();
+        let _parsed = tab.get_parsed_lines(content_area.width, theme);
+        let display_indices = tab.visible_line_indices();
+        let total_lines = display_indices.len();
+        let visible_height = content_area.height as usize;
+        tab.total_lines = total_lines;
+        tab.visible_height = visible_height;
+    }
+
+    let tab = state.tab();
+    let display_indices = tab.visible_line_indices();
     let total_lines = display_indices.len();
     let visible_height = content_area.height as usize;
-
-    state.total_lines = total_lines;
-    state.visible_height = visible_height;
-
-    let scroll = state.scroll.min(total_lines.saturating_sub(visible_height));
-    let cursor = state.cursor;
-
+    let scroll = tab.scroll.min(total_lines.saturating_sub(visible_height));
+    let cursor = tab.cursor;
     let visible: Vec<Line> = display_indices[scroll..]
         .iter()
         .enumerate()
         .take(visible_height)
         .map(|(i, &line_idx)| {
-            let sl = &state.cached_lines[line_idx];
-            let mut line = if state.search_query.is_empty() {
+            let sl = &tab.cached_lines[line_idx];
+            let mut line = if tab.search_query.is_empty() {
                 sl.line.clone()
             } else {
-                highlight_search(sl.line.clone(), &state.search_query, theme)
+                highlight_search(sl.line.clone(), &tab.search_query, theme)
             };
             // Add fold indicator for headings
             if sl.is_heading {
                 if let Some(ref text) = sl.heading_text {
-                    let indicator = if state.folded_headings.contains(text) {
+                    let indicator = if tab.folded_headings.contains(text) {
                         "▶ "
                     } else {
                         "▼ "
@@ -185,7 +240,8 @@ fn draw_reader(f: &mut Frame, state: &mut AppState) {
     }
 
     // Status bar
-    let filename = state
+    let tab = state.tab();
+    let filename = tab
         .file_path
         .as_ref()
         .map(|p| shorten_path(&p.display().to_string()))
@@ -194,25 +250,25 @@ fn draw_reader(f: &mut Frame, state: &mut AppState) {
     let is_searching = matches!(state.mode, AppMode::Search);
 
     if is_searching {
-        let match_info = if state.search_matches.is_empty() {
-            if state.search_query.is_empty() {
+        let match_info = if tab.search_matches.is_empty() {
+            if tab.search_query.is_empty() {
                 String::new()
             } else {
                 " (no matches)".to_string()
             }
         } else {
-            format!(" ({}/{})", state.search_current + 1, state.search_matches.len())
+            format!(" ({}/{})", tab.search_current + 1, tab.search_matches.len())
         };
 
         let status = Line::from(vec![
             Span::styled("/", Style::default().fg(theme.accent)),
             Span::styled(
-                state.search_query.clone(),
+                tab.search_query.clone(),
                 Style::default().fg(theme.text_bright),
             ),
             Span::styled(match_info, Style::default().fg(theme.text_dim)),
         ]);
-        f.render_widget(Paragraph::new(status), chunks[1]);
+        f.render_widget(Paragraph::new(status), chunks[2]);
     } else {
         let scroll_pct = if total_lines <= visible_height {
             100
@@ -239,7 +295,7 @@ fn draw_reader(f: &mut Frame, state: &mut AppState) {
             ),
         ];
 
-        if state.filter_tasks {
+        if tab.filter_tasks {
             status_spans.push(Span::styled(" │ ", Style::default().fg(theme.border)));
             status_spans.push(Span::styled(
                 "[filter]",
@@ -247,7 +303,7 @@ fn draw_reader(f: &mut Frame, state: &mut AppState) {
             ));
         }
 
-        if state.file_updated {
+        if tab.file_updated {
             status_spans.push(Span::styled(" │ ", Style::default().fg(theme.border)));
             status_spans.push(Span::styled(
                 "[updated]",
@@ -255,17 +311,17 @@ fn draw_reader(f: &mut Frame, state: &mut AppState) {
             ));
         }
 
-        if !state.search_query.is_empty() {
+        if !tab.search_query.is_empty() {
             status_spans.push(Span::styled(" │ ", Style::default().fg(theme.border)));
-            let match_info = if state.search_matches.is_empty() {
-                format!("/{}", state.search_query)
+            let match_info = if tab.search_matches.is_empty() {
+                format!("/{}", tab.search_query)
             } else {
-                format!("/{} ({}/{})", state.search_query, state.search_current + 1, state.search_matches.len())
+                format!("/{} ({}/{})", tab.search_query, tab.search_current + 1, tab.search_matches.len())
             };
             status_spans.push(Span::styled(match_info, Style::default().fg(theme.text_dim)));
         }
 
-        f.render_widget(Paragraph::new(Line::from(status_spans)), chunks[1]);
+        f.render_widget(Paragraph::new(Line::from(status_spans)), chunks[2]);
     }
 }
 
@@ -481,6 +537,8 @@ fn draw_help(f: &mut Frame, state: &AppState) {
         ("f",            "File picker"),
         ("e",            "Edit in $EDITOR"),
         ("t",            "Theme picker"),
+        ("H / L",        "Previous / next tab"),
+        ("W",            "Close current tab"),
         ("?",            "Toggle help"),
         ("q / Ctrl-c",   "Quit"),
     ];

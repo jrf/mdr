@@ -17,99 +17,69 @@ pub enum AppMode {
     Help,
 }
 
-pub struct AppState {
-    pub mode: AppMode,
+pub struct Tab {
     pub content: String,
     pub file_path: Option<PathBuf>,
     pub scroll: usize,
+    pub cursor: usize,
     pub total_lines: usize,
     pub visible_height: usize,
-    pub theme: Theme,
-    pub theme_index: usize,
-    pub browser: BrowserState,
-    pub cursor: usize,
     pub file_updated: bool,
     pub filter_tasks: bool,
     pub folded_headings: HashSet<String>,
     pub search_query: String,
     pub search_matches: Vec<usize>,
     pub search_current: usize,
-    // Parsed markdown cache — invalidated when content, theme, or width changes
     pub cached_lines: Vec<StyledLine<'static>>,
     pub cache_content_hash: u64,
     pub cache_theme: Theme,
     pub cache_width: u16,
     pub cache_filter: bool,
-    pub scrollbar: bool,
 }
 
-impl AppState {
-    pub fn new_picker(dir: PathBuf, theme_index: usize, scrollbar: bool) -> Self {
+impl Tab {
+    pub fn new(file_path: PathBuf, content: String, theme: Theme) -> Self {
         Self {
-            mode: AppMode::FilePicker,
-            content: String::new(),
-            file_path: None,
-            scroll: 0,
-            total_lines: 0,
-            visible_height: 0,
-            theme: ALL_THEMES[theme_index].1,
-            theme_index,
-            file_updated: false,
-            filter_tasks: false,
-            folded_headings: HashSet::new(),
-            search_query: String::new(),
-            search_matches: Vec::new(),
-            search_current: 0,
-            cursor: 0,
-            browser: BrowserState::new(dir),
-            cached_lines: Vec::new(),
-            cache_content_hash: 0,
-            cache_theme: ALL_THEMES[theme_index].1,
-            cache_width: 0,
-            cache_filter: false,
-            scrollbar,
-        }
-    }
-
-    pub fn new_reader(file_path: PathBuf, content: String, theme_index: usize, scrollbar: bool) -> Self {
-        let browser_dir = file_path
-            .parent()
-            .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| PathBuf::from("."));
-        Self {
-            mode: AppMode::Reader,
             content,
             file_path: Some(file_path),
             scroll: 0,
+            cursor: 0,
             total_lines: 0,
             visible_height: 0,
-            theme: ALL_THEMES[theme_index].1,
-            theme_index,
             file_updated: false,
             filter_tasks: false,
             folded_headings: HashSet::new(),
             search_query: String::new(),
             search_matches: Vec::new(),
             search_current: 0,
-            cursor: 0,
-            browser: BrowserState::new(browser_dir),
             cached_lines: Vec::new(),
             cache_content_hash: 0,
-            cache_theme: ALL_THEMES[theme_index].1,
+            cache_theme: theme,
             cache_width: 0,
             cache_filter: false,
-            scrollbar,
         }
     }
 
-    pub fn open_file(&mut self, path: PathBuf) -> io::Result<()> {
-        let content = fs::read_to_string(&path)?;
-        self.content = content;
-        self.file_path = Some(path);
-        self.scroll = 0;
-        self.cursor = 0;
-        self.mode = AppMode::Reader;
-        Ok(())
+    fn empty(theme: Theme) -> Self {
+        Self {
+            content: String::new(),
+            file_path: None,
+            scroll: 0,
+            cursor: 0,
+            total_lines: 0,
+            visible_height: 0,
+            file_updated: false,
+            filter_tasks: false,
+            folded_headings: HashSet::new(),
+            search_query: String::new(),
+            search_matches: Vec::new(),
+            search_current: 0,
+            cached_lines: Vec::new(),
+            cache_content_hash: 0,
+            cache_theme: theme,
+            cache_width: 0,
+            cache_filter: false,
+        }
     }
 
     fn content_hash(&self) -> u64 {
@@ -118,70 +88,24 @@ impl AppState {
         hasher.finish()
     }
 
-    pub fn get_parsed_lines(&mut self, width: u16) -> &[StyledLine<'static>] {
+    pub fn get_parsed_lines(&mut self, width: u16, theme: Theme) -> &[StyledLine<'static>] {
         let hash = self.content_hash();
         if hash != self.cache_content_hash
-            || self.theme != self.cache_theme
+            || theme != self.cache_theme
             || width != self.cache_width
             || self.filter_tasks != self.cache_filter
         {
-            let mut lines = crate::markdown::parse_markdown(&self.content, self.theme, width);
+            let mut lines = crate::markdown::parse_markdown(&self.content, theme, width);
             if self.filter_tasks {
                 lines = filter_task_lines(lines);
             }
             self.cached_lines = lines;
             self.cache_content_hash = hash;
-            self.cache_theme = self.theme;
+            self.cache_theme = theme;
             self.cache_width = width;
             self.cache_filter = self.filter_tasks;
         }
         &self.cached_lines
-    }
-
-    pub fn open_theme_picker(&mut self) {
-        match self.mode {
-            AppMode::ThemePicker { .. } | AppMode::Help => return,
-            _ => {}
-        }
-        self.mode = AppMode::ThemePicker {
-            original_index: self.theme_index,
-        };
-    }
-
-    pub fn theme_picker_select(&mut self, index: usize) {
-        self.theme_index = index;
-        self.theme = ALL_THEMES[index].1;
-    }
-
-    pub fn theme_picker_confirm(&mut self) {
-        if matches!(self.mode, AppMode::ThemePicker { .. }) {
-            let mut cfg = crate::config::load_config();
-            cfg.theme = Some(ALL_THEMES[self.theme_index].0.to_string());
-            crate::config::save_config(&cfg);
-            self.mode = AppMode::Reader;
-        }
-    }
-
-    pub fn theme_picker_cancel(&mut self) {
-        if let AppMode::ThemePicker { original_index } = self.mode {
-            self.theme_index = original_index;
-            self.theme = ALL_THEMES[original_index].1;
-            self.mode = AppMode::Reader;
-        }
-    }
-
-    pub fn open_help(&mut self) {
-        match self.mode {
-            AppMode::ThemePicker { .. } | AppMode::Help => return,
-            _ => {}
-        }
-        self.mode = AppMode::Help;
-    }
-
-    pub fn close_help(&mut self) {
-        if matches!(self.mode, AppMode::Help) {
-            self.mode = AppMode::Reader;
-        }
     }
 
     pub fn cursor_down(&mut self, n: usize) {
@@ -205,7 +129,6 @@ impl AppState {
         self.scroll = self.total_lines.saturating_sub(self.visible_height);
     }
 
-    /// Scroll the viewport without moving the cursor, then clamp cursor to stay visible.
     pub fn scroll_viewport(&mut self, n: usize, down: bool) {
         let max_scroll = self.total_lines.saturating_sub(self.visible_height);
         if down {
@@ -213,7 +136,6 @@ impl AppState {
         } else {
             self.scroll = self.scroll.saturating_sub(n);
         }
-        // Clamp cursor to visible range
         if self.cursor < self.scroll {
             self.cursor = self.scroll;
         } else if self.cursor >= self.scroll + self.visible_height {
@@ -229,8 +151,6 @@ impl AppState {
         }
     }
 
-    /// Toggle the checkbox on the line under the cursor.
-    /// Returns true if a toggle was performed.
     pub fn toggle_checkbox(&mut self) -> bool {
         let idx = match self.cursor_line_idx() {
             Some(i) => i,
@@ -244,7 +164,6 @@ impl AppState {
             None => return false,
         };
 
-        // Find and toggle the checkbox pattern on this source line
         let mut content_lines: Vec<String> = self.content.lines().map(String::from).collect();
         if source_line >= content_lines.len() {
             return false;
@@ -274,18 +193,14 @@ impl AppState {
             self.content.push('\n');
         }
 
-        // Write back to file
         if let Some(ref path) = self.file_path {
             let _ = fs::write(path, &self.content);
         }
 
-        // Invalidate cache
         self.cache_content_hash = 0;
-
         true
     }
 
-    /// Jump cursor to the next unchecked task (`- [ ]`).
     pub fn next_task(&mut self) {
         let indices = self.visible_line_indices();
         let len = indices.len();
@@ -309,7 +224,6 @@ impl AppState {
         }
     }
 
-    /// Jump cursor to the previous unchecked task (`- [ ]`).
     pub fn prev_task(&mut self) {
         let indices = self.visible_line_indices();
         let len = indices.len();
@@ -332,13 +246,11 @@ impl AppState {
         }
     }
 
-    /// Map display cursor position to cached_lines index.
     fn cursor_line_idx(&self) -> Option<usize> {
         let indices = self.visible_line_indices();
         indices.get(self.cursor).copied()
     }
 
-    /// Toggle fold state for the heading under the cursor.
     pub fn toggle_fold(&mut self) {
         if let Some(idx) = self.cursor_line_idx() {
             if let Some(sl) = self.cached_lines.get(idx) {
@@ -351,7 +263,6 @@ impl AppState {
         }
     }
 
-    /// Returns indices into cached_lines that should be displayed (respecting folds).
     pub fn visible_line_indices(&self) -> Vec<usize> {
         if self.folded_headings.is_empty() {
             return (0..self.cached_lines.len()).collect();
@@ -379,7 +290,6 @@ impl AppState {
                     }
                 }
             } else if skip_until_level.is_some() {
-                // Keep one blank line after the folded heading for spacing
                 if sl.is_blank && !kept_blank_after_fold {
                     indices.push(i);
                     kept_blank_after_fold = true;
@@ -402,14 +312,12 @@ impl AppState {
         self.search_query.clear();
         self.search_matches.clear();
         self.search_current = 0;
-        self.mode = AppMode::Search;
     }
 
     pub fn close_search(&mut self) {
         self.search_query.clear();
         self.search_matches.clear();
         self.search_current = 0;
-        self.mode = AppMode::Reader;
     }
 
     pub fn update_search(&mut self) {
@@ -461,6 +369,159 @@ impl AppState {
         if let Some(&line) = self.search_matches.get(self.search_current) {
             self.cursor = line;
             self.scroll = line.saturating_sub(self.visible_height / 3);
+        }
+    }
+}
+
+pub struct AppState {
+    pub mode: AppMode,
+    pub tabs: Vec<Tab>,
+    pub active_tab: usize,
+    pub theme: Theme,
+    pub theme_index: usize,
+    pub browser: BrowserState,
+    pub scrollbar: bool,
+}
+
+impl AppState {
+    pub fn new_picker(dir: PathBuf, theme_index: usize, scrollbar: bool) -> Self {
+        let theme = ALL_THEMES[theme_index].1;
+        Self {
+            mode: AppMode::FilePicker,
+            tabs: vec![Tab::empty(theme)],
+            active_tab: 0,
+            theme,
+            theme_index,
+            browser: BrowserState::new(dir),
+            scrollbar,
+        }
+    }
+
+    pub fn new_reader(file_path: PathBuf, content: String, theme_index: usize, scrollbar: bool) -> Self {
+        let theme = ALL_THEMES[theme_index].1;
+        let browser_dir = file_path
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."));
+        Self {
+            mode: AppMode::Reader,
+            tabs: vec![Tab::new(file_path, content, theme)],
+            active_tab: 0,
+            theme,
+            theme_index,
+            browser: BrowserState::new(browser_dir),
+            scrollbar,
+        }
+    }
+
+    /// Access the active tab.
+    pub fn tab(&self) -> &Tab {
+        &self.tabs[self.active_tab]
+    }
+
+    /// Access the active tab mutably.
+    pub fn tab_mut(&mut self) -> &mut Tab {
+        &mut self.tabs[self.active_tab]
+    }
+
+    /// Open a file in a new tab, or switch to it if already open.
+    pub fn open_file(&mut self, path: PathBuf) -> io::Result<()> {
+        // Check if already open
+        if let Some(idx) = self.tabs.iter().position(|t| t.file_path.as_ref() == Some(&path)) {
+            self.active_tab = idx;
+            self.mode = AppMode::Reader;
+            return Ok(());
+        }
+        let content = fs::read_to_string(&path)?;
+        // Replace the placeholder tab (empty, no file) if it's the only one
+        if self.tabs.len() == 1 && self.tabs[0].file_path.is_none() {
+            self.tabs[0] = Tab::new(path, content, self.theme);
+            self.active_tab = 0;
+        } else {
+            let tab = Tab::new(path, content, self.theme);
+            self.tabs.push(tab);
+            self.active_tab = self.tabs.len() - 1;
+        }
+        self.mode = AppMode::Reader;
+        Ok(())
+    }
+
+    pub fn next_tab(&mut self) {
+        if self.tabs.len() > 1 {
+            self.active_tab = (self.active_tab + 1) % self.tabs.len();
+        }
+    }
+
+    pub fn prev_tab(&mut self) {
+        if self.tabs.len() > 1 {
+            if self.active_tab == 0 {
+                self.active_tab = self.tabs.len() - 1;
+            } else {
+                self.active_tab -= 1;
+            }
+        }
+    }
+
+    pub fn close_tab(&mut self) {
+        if self.tabs.len() > 1 {
+            self.tabs.remove(self.active_tab);
+            if self.active_tab >= self.tabs.len() {
+                self.active_tab = self.tabs.len() - 1;
+            }
+        }
+    }
+
+    /// Collect all file paths from open tabs (for the file watcher).
+    pub fn tab_file_paths(&self) -> Vec<PathBuf> {
+        self.tabs
+            .iter()
+            .filter_map(|t| t.file_path.clone())
+            .collect()
+    }
+
+    pub fn open_theme_picker(&mut self) {
+        match self.mode {
+            AppMode::ThemePicker { .. } | AppMode::Help => return,
+            _ => {}
+        }
+        self.mode = AppMode::ThemePicker {
+            original_index: self.theme_index,
+        };
+    }
+
+    pub fn theme_picker_select(&mut self, index: usize) {
+        self.theme_index = index;
+        self.theme = ALL_THEMES[index].1;
+    }
+
+    pub fn theme_picker_confirm(&mut self) {
+        if matches!(self.mode, AppMode::ThemePicker { .. }) {
+            let mut cfg = crate::config::load_config();
+            cfg.theme = Some(ALL_THEMES[self.theme_index].0.to_string());
+            crate::config::save_config(&cfg);
+            self.mode = AppMode::Reader;
+        }
+    }
+
+    pub fn theme_picker_cancel(&mut self) {
+        if let AppMode::ThemePicker { original_index } = self.mode {
+            self.theme_index = original_index;
+            self.theme = ALL_THEMES[original_index].1;
+            self.mode = AppMode::Reader;
+        }
+    }
+
+    pub fn open_help(&mut self) {
+        match self.mode {
+            AppMode::ThemePicker { .. } | AppMode::Help => return,
+            _ => {}
+        }
+        self.mode = AppMode::Help;
+    }
+
+    pub fn close_help(&mut self) {
+        if matches!(self.mode, AppMode::Help) {
+            self.mode = AppMode::Reader;
         }
     }
 }

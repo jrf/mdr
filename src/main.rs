@@ -5,6 +5,7 @@ mod state;
 mod theme;
 mod ui;
 
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::io;
@@ -25,7 +26,8 @@ use ratatui::Terminal;
 
 use state::{AppMode, AppState};
 
-fn setup_watcher(path: &PathBuf, flag: Arc<AtomicBool>) -> Option<RecommendedWatcher> {
+/// Set up a file watcher that watches the parent directories of all given paths.
+fn setup_watcher(paths: &[PathBuf], flag: Arc<AtomicBool>) -> Option<RecommendedWatcher> {
     let mut watcher = notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
         if let Ok(event) = res {
             if event.kind.is_modify() {
@@ -35,12 +37,13 @@ fn setup_watcher(path: &PathBuf, flag: Arc<AtomicBool>) -> Option<RecommendedWat
     })
     .ok()?;
 
-    watcher
-        .watch(
-            path.parent().unwrap_or(path),
-            RecursiveMode::NonRecursive,
-        )
-        .ok()?;
+    let mut watched: HashSet<PathBuf> = HashSet::new();
+    for path in paths {
+        let dir = path.parent().unwrap_or(path).to_path_buf();
+        if watched.insert(dir.clone()) {
+            let _ = watcher.watch(&dir, RecursiveMode::NonRecursive);
+        }
+    }
 
     Some(watcher)
 }
@@ -58,6 +61,15 @@ fn setup_dir_watcher(dir: &PathBuf, flag: Arc<AtomicBool>) -> Option<Recommended
     watcher.watch(dir, RecursiveMode::NonRecursive).ok()?;
 
     Some(watcher)
+}
+
+/// Rebuild the file watcher to watch all open tab file paths.
+fn rebuild_watcher(state: &AppState, flag: Arc<AtomicBool>) -> Option<RecommendedWatcher> {
+    let paths = state.tab_file_paths();
+    if paths.is_empty() {
+        return None;
+    }
+    setup_watcher(&paths, flag)
 }
 
 fn main() -> io::Result<()> {
@@ -85,11 +97,8 @@ fn main() -> io::Result<()> {
     let file_dirty = Arc::new(AtomicBool::new(false));
     let dir_dirty = Arc::new(AtomicBool::new(false));
 
-    // Set up watcher if we started with a file
-    let mut _watcher: Option<RecommendedWatcher> = state
-        .file_path
-        .as_ref()
-        .and_then(|p| setup_watcher(p, file_dirty.clone()));
+    // Set up watcher for all open tab files
+    let mut _watcher: Option<RecommendedWatcher> = rebuild_watcher(&state, file_dirty.clone());
 
     // Set up directory watcher for the file picker
     let mut _dir_watcher: Option<RecommendedWatcher> =
@@ -110,14 +119,16 @@ fn main() -> io::Result<()> {
             needs_redraw = false;
         }
 
-        // Check for file changes (only in reader mode)
-        if matches!(state.mode, AppMode::Reader) && file_dirty.swap(false, Ordering::Relaxed) {
-            if let Some(ref path) = state.file_path {
-                if let Ok(new_content) = fs::read_to_string(path) {
-                    if new_content != state.content {
-                        state.content = new_content;
-                        state.file_updated = true;
-                        needs_redraw = true;
+        // Check for file changes — check all tabs
+        if file_dirty.swap(false, Ordering::Relaxed) {
+            for tab in &mut state.tabs {
+                if let Some(ref path) = tab.file_path {
+                    if let Ok(new_content) = fs::read_to_string(path) {
+                        if new_content != tab.content {
+                            tab.content = new_content;
+                            tab.file_updated = true;
+                            needs_redraw = true;
+                        }
                     }
                 }
             }
@@ -140,7 +151,7 @@ fn main() -> io::Result<()> {
                 match ev {
                     Event::Key(key) => {
                         needs_redraw = true;
-                        state.file_updated = false;
+                        state.tab_mut().file_updated = false;
                         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
 
                         match key.code {
@@ -148,10 +159,11 @@ fn main() -> io::Result<()> {
                             KeyCode::Char('c') if ctrl => break,
                             _ => match state.mode {
                                 AppMode::Reader => match key.code {
-                                    KeyCode::Esc if !state.search_query.is_empty() => {
-                                        state.search_query.clear();
-                                        state.search_matches.clear();
-                                        state.search_current = 0;
+                                    KeyCode::Esc if !state.tab().search_query.is_empty() => {
+                                        let tab = state.tab_mut();
+                                        tab.search_query.clear();
+                                        tab.search_matches.clear();
+                                        tab.search_current = 0;
                                     }
                                     KeyCode::Char('f') if !ctrl => {
                                         state.browser.filter.clear();
@@ -159,54 +171,60 @@ fn main() -> io::Result<()> {
                                         state.browser.preload_recursive();
                                         state.mode = AppMode::FilePicker;
                                     }
-                                    KeyCode::Char('F') => state.toggle_filter_tasks(),
+                                    KeyCode::Char('F') => state.tab_mut().toggle_filter_tasks(),
                                     KeyCode::Char('t') => state.open_theme_picker(),
                                     KeyCode::Char('?') => state.open_help(),
-                                    KeyCode::Char('/') => state.open_search(),
-                                    KeyCode::Char('n') => state.search_next(),
-                                    KeyCode::Char('N') => state.search_prev(),
+                                    KeyCode::Char('/') => {
+                                        state.tab_mut().open_search();
+                                        state.mode = AppMode::Search;
+                                    }
+                                    KeyCode::Char('n') => state.tab_mut().search_next(),
+                                    KeyCode::Char('N') => state.tab_mut().search_prev(),
                                     KeyCode::Char('e') => {
-                                        if let Some(ref path) = state.file_path {
+                                        if let Some(path) = state.tab().file_path.clone() {
                                             let editor = env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
                                             disable_raw_mode()?;
                                             execute!(terminal.backend_mut(), DisableMouseCapture, LeaveAlternateScreen)?;
                                             let _ = Command::new(&editor)
-                                                .arg(path)
+                                                .arg(&path)
                                                 .status();
                                             enable_raw_mode()?;
                                             execute!(terminal.backend_mut(), EnterAlternateScreen, EnableMouseCapture)?;
                                             terminal.clear()?;
-                                            if let Ok(new_content) = fs::read_to_string(path) {
-                                                state.content = new_content;
+                                            if let Ok(new_content) = fs::read_to_string(&path) {
+                                                state.tab_mut().content = new_content;
                                             }
                                         }
                                     }
-                                    KeyCode::Enter => state.toggle_fold(),
+                                    KeyCode::Enter => state.tab_mut().toggle_fold(),
                                     KeyCode::Char('x') | KeyCode::Char(' ') => {
-                                        state.toggle_checkbox();
+                                        state.tab_mut().toggle_checkbox();
                                     }
-                                    KeyCode::Tab => state.next_task(),
-                                    KeyCode::BackTab => state.prev_task(),
-                                    KeyCode::Char('j') | KeyCode::Down => state.cursor_down(1),
-                                    KeyCode::Char('k') | KeyCode::Up => state.cursor_up(1),
+                                    KeyCode::Tab => state.tab_mut().next_task(),
+                                    KeyCode::BackTab => state.tab_mut().prev_task(),
+                                    KeyCode::Char('j') | KeyCode::Down => state.tab_mut().cursor_down(1),
+                                    KeyCode::Char('k') | KeyCode::Up => state.tab_mut().cursor_up(1),
                                     KeyCode::Char('f') if ctrl => {
                                         let h = terminal.size()?.height.saturating_sub(6) as usize;
-                                        state.cursor_down(h);
+                                        state.tab_mut().cursor_down(h);
                                     }
                                     KeyCode::Char('b') if ctrl => {
                                         let h = terminal.size()?.height.saturating_sub(6) as usize;
-                                        state.cursor_up(h);
+                                        state.tab_mut().cursor_up(h);
                                     }
                                     KeyCode::PageDown => {
                                         let h = terminal.size()?.height.saturating_sub(6) as usize;
-                                        state.cursor_down(h);
+                                        state.tab_mut().cursor_down(h);
                                     }
                                     KeyCode::PageUp => {
                                         let h = terminal.size()?.height.saturating_sub(6) as usize;
-                                        state.cursor_up(h);
+                                        state.tab_mut().cursor_up(h);
                                     }
-                                    KeyCode::Home | KeyCode::Char('g') => state.cursor_top(),
-                                    KeyCode::End | KeyCode::Char('G') => state.cursor_bottom(),
+                                    KeyCode::Home | KeyCode::Char('g') => state.tab_mut().cursor_top(),
+                                    KeyCode::End | KeyCode::Char('G') => state.tab_mut().cursor_bottom(),
+                                    KeyCode::Char('H') => state.prev_tab(),
+                                    KeyCode::Char('L') => state.next_tab(),
+                                    KeyCode::Char('W') => state.close_tab(),
                                     _ => needs_redraw = false,
                                 },
                                 AppMode::FilePicker => match key.code {
@@ -223,10 +241,7 @@ fn main() -> io::Result<()> {
                                     KeyCode::Enter => {
                                         if let Some(file_path) = state.browser.enter_selected() {
                                             if state.open_file(file_path).is_ok() {
-                                                _watcher = state
-                                                    .file_path
-                                                    .as_ref()
-                                                    .and_then(|p| setup_watcher(p, file_dirty.clone()));
+                                                _watcher = rebuild_watcher(&state, file_dirty.clone());
                                                 _dir_watcher = setup_dir_watcher(
                                                     &state.browser.current_dir,
                                                     dir_dirty.clone(),
@@ -260,18 +275,21 @@ fn main() -> io::Result<()> {
                                     _ => needs_redraw = false,
                                 },
                                 AppMode::Search => match key.code {
-                                    KeyCode::Esc => state.close_search(),
+                                    KeyCode::Esc => {
+                                        state.tab_mut().close_search();
+                                        state.mode = AppMode::Reader;
+                                    }
                                     KeyCode::Enter => {
-                                        state.search_first();
+                                        state.tab_mut().search_first();
                                         state.mode = AppMode::Reader;
                                     }
                                     KeyCode::Backspace => {
-                                        state.search_query.pop();
-                                        state.update_search();
+                                        state.tab_mut().search_query.pop();
+                                        state.tab_mut().update_search();
                                     }
                                     KeyCode::Char(c) => {
-                                        state.search_query.push(c);
-                                        state.update_search();
+                                        state.tab_mut().search_query.push(c);
+                                        state.tab_mut().update_search();
                                     }
                                     _ => needs_redraw = false,
                                 },
@@ -304,11 +322,11 @@ fn main() -> io::Result<()> {
                     Event::Mouse(mouse) => {
                         match mouse.kind {
                             MouseEventKind::ScrollDown => {
-                                state.scroll_viewport(3, true);
+                                state.tab_mut().scroll_viewport(3, true);
                                 needs_redraw = true;
                             }
                             MouseEventKind::ScrollUp => {
-                                state.scroll_viewport(3, false);
+                                state.tab_mut().scroll_viewport(3, false);
                                 needs_redraw = true;
                             }
                             _ => {}

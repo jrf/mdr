@@ -15,12 +15,12 @@
 - [ ] Table of contents overlay — list headings, jump to any section
 - [ ] Inline image rendering via Sixel (with fallback to `[image: alt text]` placeholder)
 - [ ] Footnote rendering
-- [ ] Multiple file tabs — open several files, switch without the picker
 - [ ] Bookmarks — mark positions in a file, jump back to them
 - [ ] Tidy command — keybind to move completed `[x]` tasks to a "Done" section
 
 ## Done
 
+- [x] Multiple file tabs — open several files, switch with `H`/`L`, close with `W`
 - [x] Use `unicode-width` for line length calculations
 - [x] Use actual visible height for `Ctrl-d`/`Ctrl-u` page size in reader mode
 - [x] Clamp `scroll_bottom` properly instead of setting `usize::MAX`
