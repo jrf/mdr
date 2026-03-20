@@ -1,10 +1,11 @@
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
 use crate::theme::Theme;
 
+#[allow(dead_code)]
 pub struct StyledLine<'a> {
     pub line: Line<'a>,
     pub is_blank: bool,
@@ -13,6 +14,24 @@ pub struct StyledLine<'a> {
     pub heading_text: Option<String>,
     /// Source line number for task list items (used for checkbox toggling)
     pub source_line: Option<usize>,
+    /// Inline tags found on this line (e.g. "feature", "bug")
+    pub tags: Vec<String>,
+}
+
+/// Resolve a tag name to its label color, or a default tag color.
+pub fn tag_color(tag: &str, theme: &Theme) -> Color {
+    match tag {
+        "bug" | "bugs" => theme.labels.bugs,
+        "feature" | "features" => theme.labels.features,
+        "improvement" | "improvements" => theme.labels.improvements,
+        "refactor" | "refactoring" => theme.labels.refactor,
+        "doc" | "docs" | "documentation" => theme.labels.docs,
+        "chore" | "chores" => theme.labels.chore,
+        "data" => theme.labels.data,
+        "model" => theme.labels.model,
+        "experiment" | "experiments" => theme.labels.experiment,
+        _ => theme.text_dim,
+    }
 }
 
 pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<'static>> {
@@ -24,6 +43,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
     let parser = Parser::new_ext(source, opts);
     let mut lines: Vec<StyledLine<'static>> = Vec::new();
     let mut current_spans: Vec<Span<'static>> = Vec::new();
+    let mut current_tags: Vec<String> = Vec::new();
 
     let mut bold = false;
     let mut italic = false;
@@ -48,7 +68,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
         match event {
             Event::Start(tag) => match tag {
                 Tag::Heading { level, .. } => {
-                    flush_line(&mut lines, &mut current_spans, task_source_line);
+                    flush_line(&mut lines, &mut current_spans, task_source_line, &mut current_tags);
                     in_heading = Some(level as u8);
                 }
                 Tag::Paragraph => {}
@@ -62,7 +82,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                     list_stack.push(start);
                 }
                 Tag::Item => {
-                    flush_line(&mut lines, &mut current_spans, task_source_line);
+                    flush_line(&mut lines, &mut current_spans, task_source_line, &mut current_tags);
                     in_list_item = true;
                     list_item_first_para = true;
                     task_source_line = None;
@@ -86,12 +106,12 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                 TagEnd::Heading(_) => {
                     let level = in_heading.unwrap_or(1);
                     let text = std::mem::take(&mut heading_text_buf);
-                    flush_line_heading(&mut lines, &mut current_spans, level, text);
+                    flush_line_heading(&mut lines, &mut current_spans, level, text, &mut current_tags);
                     push_blank(&mut lines);
                     in_heading = None;
                 }
                 TagEnd::Paragraph => {
-                    flush_line(&mut lines, &mut current_spans, task_source_line);
+                    flush_line(&mut lines, &mut current_spans, task_source_line, &mut current_tags);
                     if !in_list_item {
                         push_blank(&mut lines);
                     }
@@ -110,7 +130,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                     }
                 }
                 TagEnd::Item => {
-                    flush_line(&mut lines, &mut current_spans, task_source_line);
+                    flush_line(&mut lines, &mut current_spans, task_source_line, &mut current_tags);
                     in_list_item = false;
                     task_source_line = None;
                 }
@@ -142,6 +162,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                         heading_level: None,
                         heading_text: None,
                         source_line: None,
+                        tags: Vec::new(),
                     });
                 }
                 TagEnd::TableRow => {
@@ -163,13 +184,10 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                 }
 
                 let style = if let Some(level) = in_heading {
-                    let color = if level >= 3 {
-                        label_color(&heading_text_buf, &theme).unwrap_or(theme.text_bright)
-                    } else {
-                        match level {
-                            1 => theme.accent,
-                            _ => theme.heading,
-                        }
+                    let color = match level {
+                        1 => theme.accent,
+                        2 => theme.heading,
+                        _ => theme.text_bright,
                     };
                     Style::default().fg(color).add_modifier(Modifier::BOLD)
                 } else if in_code_block {
@@ -195,7 +213,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                             Style::default().fg(theme.text_muted),
                         ));
                         current_spans.push(Span::styled(line_text.to_string(), style));
-                        flush_line(&mut lines, &mut current_spans, None);
+                        flush_line(&mut lines, &mut current_spans, None, &mut current_tags);
                     }
                 } else if in_blockquote {
                     current_spans.push(Span::styled(
@@ -234,7 +252,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                         list_item_first_para = false;
                     }
 
-                    // Word wrapping
+                    // Word wrapping with inline #tag detection
                     let max_width = width.saturating_sub(2) as usize;
                     let words: Vec<&str> = text.split_whitespace().collect();
                     let mut line_len = current_line_len(&current_spans);
@@ -242,7 +260,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                     for word in words {
                         let wlen = word.width();
                         if line_len > 0 && line_len + 1 + wlen > max_width {
-                            flush_line(&mut lines, &mut current_spans, task_source_line);
+                            flush_line(&mut lines, &mut current_spans, task_source_line, &mut current_tags);
                             // Add continuation indent for list items
                             if in_list_item && list_indent > 0 {
                                 let indent = " ".repeat(list_indent);
@@ -256,6 +274,23 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                             current_spans.push(Span::raw(" ".to_string()));
                             line_len += 1;
                         }
+
+                        // Detect #tags (not inside headings or code blocks)
+                        if in_heading.is_none() && !in_code_block {
+                            if let Some(tag_name) = word.strip_prefix('#') {
+                                if !tag_name.is_empty() && tag_name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+                                    let color = tag_color(&tag_name.to_lowercase(), &theme);
+                                    current_spans.push(Span::styled(
+                                        word.to_string(),
+                                        Style::default().fg(color),
+                                    ));
+                                    current_tags.push(tag_name.to_lowercase());
+                                    line_len += wlen;
+                                    continue;
+                                }
+                            }
+                        }
+
                         current_spans.push(Span::styled(word.to_string(), style));
                         line_len += wlen;
                     }
@@ -263,7 +298,6 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
             }
             Event::Code(text) => {
                 let text = text.into_string();
-                let style = Style::default().fg(theme.accent);
 
                 // Check if we need to emit bullet prefix first
                 if list_item_first_para {
@@ -285,7 +319,11 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                     list_item_first_para = false;
                 }
 
-                current_spans.push(Span::styled(format!("`{}`", text), style));
+                if current_line_len(&current_spans) > 0 {
+                    current_spans.push(Span::raw(" ".to_string()));
+                }
+                let code_style = Style::default().fg(theme.accent).bg(theme.cursor_bg);
+                current_spans.push(Span::styled(format!(" {} ", text), code_style));
             }
             Event::TaskListMarker(checked) => {
                 // Compute source line number from byte offset
@@ -299,10 +337,10 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                 list_item_first_para = false;
             }
             Event::SoftBreak | Event::HardBreak => {
-                flush_line(&mut lines, &mut current_spans, task_source_line);
+                flush_line(&mut lines, &mut current_spans, task_source_line, &mut current_tags);
             }
             Event::Rule => {
-                flush_line(&mut lines, &mut current_spans, task_source_line);
+                flush_line(&mut lines, &mut current_spans, task_source_line, &mut current_tags);
                 let rule = "─".repeat(width.saturating_sub(2) as usize);
                 lines.push(StyledLine {
                     line: Line::from(Span::styled(
@@ -314,6 +352,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                     heading_level: None,
                     heading_text: None,
                     source_line: None,
+                    tags: Vec::new(),
                 });
                 push_blank(&mut lines);
             }
@@ -321,7 +360,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
         }
     }
 
-    flush_line(&mut lines, &mut current_spans, task_source_line);
+    flush_line(&mut lines, &mut current_spans, task_source_line, &mut current_tags);
 
     // Remove trailing blank lines
     while lines.last().map_or(false, |l| l.is_blank) {
@@ -374,6 +413,7 @@ fn emit_table_row(
         heading_level: None,
         heading_text: None,
         source_line: None,
+        tags: Vec::new(),
     });
 }
 
@@ -389,6 +429,7 @@ fn push_blank(lines: &mut Vec<StyledLine<'static>>) {
         heading_level: None,
         heading_text: None,
         source_line: None,
+        tags: Vec::new(),
     });
 }
 
@@ -396,6 +437,7 @@ fn flush_line(
     lines: &mut Vec<StyledLine<'static>>,
     spans: &mut Vec<Span<'static>>,
     source_line: Option<usize>,
+    tags: &mut Vec<String>,
 ) {
     if spans.is_empty() {
         return;
@@ -408,20 +450,8 @@ fn flush_line(
         heading_level: None,
         heading_text: None,
         source_line,
+        tags: std::mem::take(tags),
     });
-}
-
-fn label_color(heading_text: &str, theme: &Theme) -> Option<ratatui::style::Color> {
-    let text = heading_text.trim().to_lowercase();
-    match text.as_str() {
-        "bugs" | "bug" => Some(theme.labels.bugs),
-        "features" | "feature" => Some(theme.labels.features),
-        "improvements" | "improvement" => Some(theme.labels.improvements),
-        "refactor" | "refactoring" => Some(theme.labels.refactor),
-        "docs" | "documentation" => Some(theme.labels.docs),
-        "chore" | "chores" => Some(theme.labels.chore),
-        _ => None,
-    }
 }
 
 fn flush_line_heading(
@@ -429,6 +459,7 @@ fn flush_line_heading(
     spans: &mut Vec<Span<'static>>,
     level: u8,
     text: String,
+    tags: &mut Vec<String>,
 ) {
     if spans.is_empty() {
         return;
@@ -441,5 +472,6 @@ fn flush_line_heading(
         heading_level: Some(level),
         heading_text: Some(text),
         source_line: None,
+        tags: std::mem::take(tags),
     });
 }

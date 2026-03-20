@@ -178,7 +178,13 @@ fn main() -> io::Result<()> {
                                         state.browser.preload_recursive();
                                         state.mode = AppMode::FilePicker;
                                     }
-                                    KeyCode::Char('F') => state.tab_mut().toggle_filter_tasks(),
+                                    KeyCode::Char('u') => {
+                                        let tab = state.tab_mut();
+                                        tab.filter_tasks = !tab.filter_tasks;
+                                        tab.cursor = 0;
+                                        tab.scroll = 0;
+                                    }
+                                    KeyCode::Char('l') => state.open_label_picker(),
                                     KeyCode::Char('t') => state.open_theme_picker(),
                                     KeyCode::Char('?') => state.open_help(),
                                     KeyCode::Char('/') => {
@@ -244,6 +250,31 @@ fn main() -> io::Result<()> {
                                     KeyCode::Up => {
                                         state.browser.select_up();
                                         let h = (terminal.size()?.height as usize * 3 / 4).saturating_sub(4);
+                                        state.browser.adjust_scroll(h);
+                                    }
+                                    KeyCode::Home => {
+                                        state.browser.selected = 0;
+                                        state.browser.scroll_offset = 0;
+                                    }
+                                    KeyCode::End => {
+                                        let len = state.browser.filtered_indices.len();
+                                        if len > 0 {
+                                            state.browser.selected = len - 1;
+                                        }
+                                        let h = (terminal.size()?.height as usize * 3 / 4).saturating_sub(4);
+                                        state.browser.adjust_scroll(h);
+                                    }
+                                    KeyCode::PageDown => {
+                                        let h = (terminal.size()?.height as usize * 3 / 4).saturating_sub(4);
+                                        let len = state.browser.filtered_indices.len();
+                                        if len > 0 {
+                                            state.browser.selected = (state.browser.selected + h).min(len - 1);
+                                        }
+                                        state.browser.adjust_scroll(h);
+                                    }
+                                    KeyCode::PageUp => {
+                                        let h = (terminal.size()?.height as usize * 3 / 4).saturating_sub(4);
+                                        state.browser.selected = state.browser.selected.saturating_sub(h);
                                         state.browser.adjust_scroll(h);
                                     }
                                     KeyCode::Enter => {
@@ -314,8 +345,41 @@ fn main() -> io::Result<()> {
                                         };
                                         state.theme_picker_select(next);
                                     }
+                                    KeyCode::Home => state.theme_picker_select(0),
+                                    KeyCode::End => {
+                                        let last = state.themes.len().saturating_sub(1);
+                                        state.theme_picker_select(last);
+                                    }
                                     KeyCode::Enter => state.theme_picker_confirm(),
                                     KeyCode::Esc => state.theme_picker_cancel(),
+                                    _ => needs_redraw = false,
+                                },
+                                AppMode::FilterPicker => match key.code {
+                                    KeyCode::Char('j') | KeyCode::Down => {
+                                        let len = state.filter_options.len();
+                                        if len > 0 {
+                                            state.filter_selected = (state.filter_selected + 1) % len;
+                                        }
+                                    }
+                                    KeyCode::Char('k') | KeyCode::Up => {
+                                        let len = state.filter_options.len();
+                                        if len > 0 {
+                                            state.filter_selected = if state.filter_selected == 0 {
+                                                len - 1
+                                            } else {
+                                                state.filter_selected - 1
+                                            };
+                                        }
+                                    }
+                                    KeyCode::Home => state.filter_selected = 0,
+                                    KeyCode::End => {
+                                        let len = state.filter_options.len();
+                                        if len > 0 {
+                                            state.filter_selected = len - 1;
+                                        }
+                                    }
+                                    KeyCode::Enter => state.label_picker_confirm(),
+                                    KeyCode::Esc | KeyCode::Char('l') => state.label_picker_cancel(),
                                     _ => needs_redraw = false,
                                 },
                                 AppMode::Help => match key.code {

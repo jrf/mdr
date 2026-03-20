@@ -24,6 +24,9 @@ pub struct CategoryLabels {
     pub refactor: Color,
     pub docs: Color,
     pub chore: Color,
+    pub data: Color,
+    pub model: Color,
+    pub experiment: Color,
 }
 
 /// Fallback theme (tokyo night moon in RGB) used when config has no themes.
@@ -45,6 +48,9 @@ pub fn default_theme() -> Theme {
             refactor: Color::Rgb(255, 199, 119),   // #ffc777
             docs: Color::Rgb(130, 170, 255),       // #82aaff
             chore: Color::Rgb(99, 109, 166),       // #636da6
+            data: Color::Rgb(79, 214, 190),        // #4fd6be
+            model: Color::Rgb(252, 167, 234),      // #fca7ea
+            experiment: Color::Rgb(255, 150, 108),  // #ff966c
         },
     }
 }
@@ -86,6 +92,9 @@ pub struct LabelsConfig {
     pub refactor: Option<String>,
     pub docs: Option<String>,
     pub chore: Option<String>,
+    pub data: Option<String>,
+    pub model: Option<String>,
+    pub experiment: Option<String>,
 }
 
 /// Parse "#rrggbb" to Color::Rgb.
@@ -136,6 +145,9 @@ impl ThemeConfig {
                 refactor: r(lb.map(|l| &l.refactor), base.labels.refactor),
                 docs: r(lb.map(|l| &l.docs), base.labels.docs),
                 chore: r(lb.map(|l| &l.chore), base.labels.chore),
+                data: r(lb.map(|l| &l.data), base.labels.data),
+                model: r(lb.map(|l| &l.model), base.labels.model),
+                experiment: r(lb.map(|l| &l.experiment), base.labels.experiment),
             },
         }
     }

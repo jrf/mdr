@@ -49,7 +49,8 @@ mdr <file.md>
 | `[` / `]` | Fold all / unfold all |
 | `x` / `Space` | Toggle task checkbox |
 | `Ctrl-n` / `Ctrl-p` | Next / previous unchecked task |
-| `F` | Toggle task filter view |
+| `u` | Toggle unchecked task filter |
+| `l` | Filter by label |
 | `/` | Search |
 | `n` / `N` | Next/previous match |
 | `f` | File picker (opens in new tab) |

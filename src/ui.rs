@@ -23,6 +23,7 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
         AppMode::Reader | AppMode::Search => {}
         AppMode::FilePicker => draw_file_picker(f, state),
         AppMode::ThemePicker { .. } => draw_theme_picker(f, state),
+        AppMode::FilterPicker => draw_filter_picker(f, state),
         AppMode::Help => draw_help(f, state),
     }
 }
@@ -298,7 +299,15 @@ fn draw_reader(f: &mut Frame, state: &mut AppState) {
         if tab.filter_tasks {
             status_spans.push(Span::styled(" │ ", Style::default().fg(theme.border)));
             status_spans.push(Span::styled(
-                "[filter]",
+                "[tasks]",
+                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+            ));
+        }
+
+        if let Some(ref tag) = tab.tag_filter {
+            status_spans.push(Span::styled(" │ ", Style::default().fg(theme.border)));
+            status_spans.push(Span::styled(
+                format!("#{}",tag),
                 Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
             ));
         }
@@ -517,6 +526,86 @@ fn draw_theme_picker(f: &mut Frame, state: &AppState) {
     f.render_widget(Paragraph::new(hint), chunks[1]);
 }
 
+fn draw_filter_picker(f: &mut Frame, state: &AppState) {
+    let theme = state.theme;
+    let area = f.area();
+    let options = &state.filter_options;
+
+    let height = options.len() as u16 + 4;
+    let width = 34;
+    let popup = centered_rect(width, height, area);
+
+    f.render_widget(Clear, popup);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.accent))
+        .title(" Labels ")
+        .title_style(Style::default().fg(theme.accent).add_modifier(Modifier::BOLD));
+
+    let inner = block.inner(popup);
+    f.render_widget(block, popup);
+
+    let chunks = Layout::vertical([
+        Constraint::Min(1),
+        Constraint::Length(1),
+    ])
+    .split(inner);
+
+    let tab = state.tab();
+    let lines: Vec<Line> = options
+        .iter()
+        .enumerate()
+        .map(|(i, option)| {
+            let is_selected = i == state.filter_selected;
+            let is_active = match option.as_str() {
+                "None" => tab.tag_filter.is_none(),
+                tag => tab.tag_filter.as_deref() == Some(tag),
+            };
+            let marker = if is_active { " * " } else { "   " };
+            let prefix = if is_selected { ">" } else { " " };
+            let display = if option == "None" {
+                "None".to_string()
+            } else {
+                format!("#{}", option)
+            };
+            let fg = if option == "None" {
+                theme.text
+            } else {
+                crate::markdown::tag_color(option, &theme)
+            };
+            let style = if is_selected {
+                Style::default()
+                    .fg(fg)
+                    .bg(theme.cursor_bg)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(fg)
+            };
+            let mut line = Line::from(Span::styled(format!("{}{} {}", marker, prefix, display), style));
+            if is_selected {
+                let content_width: usize = line.spans.iter().map(|s| s.content.width()).sum();
+                let area_width = chunks[0].width as usize;
+                if content_width < area_width {
+                    line.spans.push(Span::styled(
+                        " ".repeat(area_width - content_width),
+                        Style::default().bg(theme.cursor_bg),
+                    ));
+                }
+            }
+            line
+        })
+        .collect();
+
+    f.render_widget(Paragraph::new(lines), chunks[0]);
+
+    let hint = Line::from(Span::styled(
+        " j/k:select  enter:ok  esc/l:cancel",
+        Style::default().fg(theme.text_muted),
+    ));
+    f.render_widget(Paragraph::new(hint), chunks[1]);
+}
+
 fn draw_help(f: &mut Frame, state: &AppState) {
     let theme = state.theme;
     let area = f.area();
@@ -532,7 +621,8 @@ fn draw_help(f: &mut Frame, state: &AppState) {
         ("[ / ]",        "Fold all / unfold all"),
         ("x / Space",    "Toggle task checkbox"),
         ("Ctrl-n / p",   "Next / previous unchecked task"),
-        ("F",            "Toggle task filter view"),
+        ("u",            "Toggle unchecked task filter"),
+        ("l",            "Filter by label"),
         ("/",            "Search"),
         ("n / N",        "Next / previous match"),
         ("f",            "File picker"),

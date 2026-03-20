@@ -14,6 +14,7 @@ pub enum AppMode {
     Search,
     FilePicker,
     ThemePicker { original_index: usize },
+    FilterPicker,
     Help,
 }
 
@@ -26,6 +27,7 @@ pub struct Tab {
     pub visible_height: usize,
     pub file_updated: bool,
     pub filter_tasks: bool,
+    pub tag_filter: Option<String>,
     pub folded_headings: HashSet<String>,
     pub search_query: String,
     pub search_matches: Vec<usize>,
@@ -48,6 +50,7 @@ impl Tab {
             visible_height: 0,
             file_updated: false,
             filter_tasks: false,
+            tag_filter: None,
             folded_headings: HashSet::new(),
             search_query: String::new(),
             search_matches: Vec::new(),
@@ -70,6 +73,7 @@ impl Tab {
             visible_height: 0,
             file_updated: false,
             filter_tasks: false,
+            tag_filter: None,
             folded_headings: HashSet::new(),
             search_query: String::new(),
             search_matches: Vec::new(),
@@ -278,12 +282,14 @@ impl Tab {
     }
 
     pub fn visible_line_indices(&self) -> Vec<usize> {
-        if self.folded_headings.is_empty() {
+        let no_folds = self.folded_headings.is_empty();
+        let no_tag_filter = self.tag_filter.is_none();
+
+        if no_folds && no_tag_filter {
             return (0..self.cached_lines.len()).collect();
         }
 
         let mut indices = Vec::new();
-        // Track the nearest heading above the current line
         let mut current_heading_folded = false;
         let mut kept_blank_after_fold = false;
 
@@ -291,29 +297,62 @@ impl Tab {
             if sl.heading_level.is_some() {
                 // Headings are always shown
                 indices.push(i);
-                // Update fold state: is this heading folded?
                 current_heading_folded = sl.heading_text.as_ref()
                     .map_or(false, |text| self.folded_headings.contains(text));
                 kept_blank_after_fold = false;
             } else if current_heading_folded {
-                // Content under a folded heading — keep one blank line
                 if sl.is_blank && !kept_blank_after_fold {
                     indices.push(i);
                     kept_blank_after_fold = true;
+                }
+            } else if let Some(ref tag) = self.tag_filter {
+                // Tag filter active — only show lines that have the tag, or blanks for spacing
+                if sl.tags.contains(tag) {
+                    indices.push(i);
+                } else if sl.is_blank {
+                    // Keep blanks only if the previous visible line was a tagged line
+                    if indices.last().map_or(false, |&prev| {
+                        self.cached_lines.get(prev).map_or(false, |p| !p.tags.is_empty() || p.is_heading)
+                    }) {
+                        indices.push(i);
+                    }
                 }
             } else {
                 indices.push(i);
             }
         }
 
+        // When tag filtering, remove trailing blanks and consecutive blanks
+        if self.tag_filter.is_some() {
+            indices.dedup_by(|b, a| {
+                self.cached_lines.get(*a).map_or(false, |la| la.is_blank)
+                    && self.cached_lines.get(*b).map_or(false, |lb| lb.is_blank)
+            });
+            while indices.last().map_or(false, |&i| self.cached_lines.get(i).map_or(false, |l| l.is_blank)) {
+                indices.pop();
+            }
+        }
+
         indices
     }
 
-    pub fn toggle_filter_tasks(&mut self) {
-        self.filter_tasks = !self.filter_tasks;
+    /// Collect all unique tags from cached lines, sorted.
+    pub fn collect_tags(&self) -> Vec<String> {
+        let mut tags: Vec<String> = self.cached_lines.iter()
+            .flat_map(|sl| sl.tags.iter().cloned())
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        tags.sort();
+        tags
+    }
+
+    pub fn set_tag_filter(&mut self, tag: String) {
+        self.tag_filter = Some(tag);
         self.cursor = 0;
         self.scroll = 0;
     }
+
 
     pub fn open_search(&mut self) {
         self.search_query.clear();
@@ -389,6 +428,8 @@ pub struct AppState {
     pub themes: Vec<(String, Theme)>,
     pub browser: BrowserState,
     pub scrollbar: bool,
+    pub filter_options: Vec<String>,
+    pub filter_selected: usize,
 }
 
 impl AppState {
@@ -402,6 +443,8 @@ impl AppState {
             theme_index,
             themes,
             browser: BrowserState::new(dir),
+            filter_options: Vec::new(),
+            filter_selected: 0,
             scrollbar,
         }
     }
@@ -420,6 +463,8 @@ impl AppState {
             theme_index,
             themes,
             browser: BrowserState::new(browser_dir),
+            filter_options: Vec::new(),
+            filter_selected: 0,
             scrollbar,
         }
     }
@@ -489,6 +534,47 @@ impl AppState {
             .collect()
     }
 
+    pub fn open_label_picker(&mut self) {
+        let tags = self.tab().collect_tags();
+        if tags.is_empty() {
+            return;
+        }
+        let mut options: Vec<String> = vec!["None".to_string()];
+        for tag in tags {
+            options.push(tag);
+        }
+        let selected = if let Some(ref tag) = self.tab().tag_filter {
+            options.iter().position(|o| o == tag).unwrap_or(0)
+        } else {
+            0
+        };
+        self.filter_options = options;
+        self.filter_selected = selected;
+        self.mode = AppMode::FilterPicker;
+    }
+
+    pub fn label_picker_confirm(&mut self) {
+        if matches!(self.mode, AppMode::FilterPicker) {
+            if let Some(option) = self.filter_options.get(self.filter_selected).cloned() {
+                let tab = self.tab_mut();
+                if option == "None" {
+                    tab.tag_filter = None;
+                    tab.cursor = 0;
+                    tab.scroll = 0;
+                } else {
+                    tab.set_tag_filter(option);
+                }
+            }
+            self.mode = AppMode::Reader;
+        }
+    }
+
+    pub fn label_picker_cancel(&mut self) {
+        if matches!(self.mode, AppMode::FilterPicker) {
+            self.mode = AppMode::Reader;
+        }
+    }
+
     pub fn open_theme_picker(&mut self) {
         match self.mode {
             AppMode::ThemePicker { .. } | AppMode::Help => return,
@@ -552,6 +638,7 @@ fn filter_task_lines(lines: Vec<StyledLine<'static>>) -> Vec<StyledLine<'static>
                     heading_level: None,
                     heading_text: None,
                     source_line: None,
+                    tags: Vec::new(),
                 });
             }
             result.push(sl);
@@ -563,6 +650,7 @@ fn filter_task_lines(lines: Vec<StyledLine<'static>>) -> Vec<StyledLine<'static>
                 heading_level: None,
                 heading_text: None,
                 source_line: None,
+                tags: Vec::new(),
             });
         } else if sl.source_line.is_some() {
             // Check the marker span (first span) for unchecked status
