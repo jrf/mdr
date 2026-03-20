@@ -14,6 +14,11 @@
 
 ## Later
 
+## Scrapped
+
+- H3 headings as category labels — replaced by inline `#tags`, more flexible
+- `F` as unified filter picker — two-step UX felt clunky, split into `u`/`l` instead
+
 ## Done
 
 - [x] Table of contents overlay — `o` to list headings, jump to any section #feature
