@@ -78,6 +78,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
     opts.insert(Options::ENABLE_STRIKETHROUGH);
     opts.insert(Options::ENABLE_TABLES);
     opts.insert(Options::ENABLE_TASKLISTS);
+    opts.insert(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS);
 
     let parser = Parser::new_ext(source, opts);
     let mut lines: Vec<StyledLine<'static>> = Vec::new();
@@ -100,14 +101,21 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
     let mut list_item_first_para = false;
     let mut list_indent: usize = 0;
     let mut in_table = false;
+    let mut table_cell_buf = String::new();
     let mut table_row: Vec<String> = Vec::new();
+    let mut table_rows: Vec<Vec<String>> = Vec::new(); // all rows (header first)
+    let mut table_has_header = false;
     let mut table_alignments: Vec<pulldown_cmark::Alignment> = Vec::new();
 
     // Track source line for task list items
     let mut task_source_line: Option<usize> = None;
+    let mut in_metadata = false;
 
     for (event, range) in parser.into_offset_iter() {
         match event {
+            Event::Start(Tag::MetadataBlock(_)) => { in_metadata = true; continue; }
+            Event::End(TagEnd::MetadataBlock(_)) => { in_metadata = false; continue; }
+            _ if in_metadata => continue,
             Event::Start(tag) => match tag {
                 Tag::Heading { level, .. } => {
                     flush_line(&mut lines, &mut current_spans, task_source_line, &mut current_tags, &mut current_link_url);
@@ -149,7 +157,9 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                 }
                 Tag::TableHead => {}
                 Tag::TableRow => {}
-                Tag::TableCell => {}
+                Tag::TableCell => {
+                    table_cell_buf.clear();
+                }
                 _ => {}
             },
             Event::End(tag_end) => match tag_end {
@@ -208,38 +218,55 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                 TagEnd::Strikethrough => strikethrough = false,
                 TagEnd::Table => {
                     in_table = false;
+                    // Compute column widths from all accumulated rows
+                    let num_cols = table_alignments.len();
+                    let mut col_widths: Vec<usize> = vec![0; num_cols];
+                    for row in &table_rows {
+                        for (j, cell) in row.iter().enumerate() {
+                            if j < num_cols {
+                                col_widths[j] = col_widths[j].max(cell.len());
+                            }
+                        }
+                    }
+                    // Emit all rows
+                    for (row_idx, row) in table_rows.iter().enumerate() {
+                        emit_table_row(&mut lines, row, &table_alignments, &col_widths, theme, row_idx == 0 && table_has_header);
+                        // Separator after header
+                        if row_idx == 0 && table_has_header {
+                            let sep: String = col_widths.iter()
+                                .map(|&w| "─".repeat(w))
+                                .collect::<Vec<_>>()
+                                .join("─┼─");
+                            lines.push(StyledLine {
+                                line: Line::from(Span::styled(
+                                    format!("  {}", sep),
+                                    Style::default().fg(theme.border),
+                                )),
+                                is_blank: false,
+                                is_heading: false,
+                                heading_level: None,
+                                heading_text: None,
+                                source_line: None,
+                                tags: Vec::new(),
+                                link_url: None,
+                            });
+                        }
+                    }
+                    table_rows.clear();
+                    table_has_header = false;
                     table_alignments.clear();
                     push_blank(&mut lines);
                 }
                 TagEnd::TableHead => {
-                    // Emit header row
-                    emit_table_row(&mut lines, &table_row, &table_alignments, theme, true, width);
-                    table_row.clear();
-                    // Emit separator
-                    let sep = table_alignments
-                        .iter()
-                        .map(|_| "───────")
-                        .collect::<Vec<_>>()
-                        .join("─┼─");
-                    lines.push(StyledLine {
-                        line: Line::from(Span::styled(
-                            format!("  {}",sep),
-                            Style::default().fg(theme.border),
-                        )),
-                        is_blank: false,
-                        is_heading: false,
-                        heading_level: None,
-                        heading_text: None,
-                        source_line: None,
-                        tags: Vec::new(),
-                        link_url: None,
-                    });
+                    table_rows.push(std::mem::take(&mut table_row));
+                    table_has_header = true;
                 }
                 TagEnd::TableRow => {
-                    emit_table_row(&mut lines, &table_row, &table_alignments, theme, false, width);
-                    table_row.clear();
+                    table_rows.push(std::mem::take(&mut table_row));
                 }
-                TagEnd::TableCell => {}
+                TagEnd::TableCell => {
+                    table_row.push(std::mem::take(&mut table_cell_buf));
+                }
                 _ => {}
             },
             Event::Text(text) => {
@@ -254,7 +281,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                 }
 
                 if in_table {
-                    table_row.push(text);
+                    table_cell_buf.push_str(&text);
                     continue;
                 }
 
@@ -363,6 +390,11 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
             Event::Code(text) => {
                 let text = text.into_string();
 
+                if in_table {
+                    table_cell_buf.push_str(&text);
+                    continue;
+                }
+
                 // Check if we need to emit bullet prefix first
                 if list_item_first_para {
                     let depth = list_stack.len();
@@ -439,11 +471,10 @@ fn emit_table_row(
     lines: &mut Vec<StyledLine<'static>>,
     cells: &[String],
     alignments: &[pulldown_cmark::Alignment],
+    col_widths: &[usize],
     theme: Theme,
     is_header: bool,
-    _width: u16,
 ) {
-    let col_width = 15;
     let mut spans: Vec<Span<'static>> = Vec::new();
     spans.push(Span::styled("  ".to_string(), Style::default()));
 
@@ -452,15 +483,12 @@ fn emit_table_row(
             spans.push(Span::styled(" │ ", Style::default().fg(theme.border)));
         }
 
+        let col_width = col_widths.get(i).copied().unwrap_or(cell.len());
         let alignment = alignments.get(i).copied().unwrap_or(pulldown_cmark::Alignment::None);
-        let text = if cell.len() > col_width {
-            format!("{}…", &cell[..col_width - 1])
-        } else {
-            match alignment {
-                pulldown_cmark::Alignment::Right => format!("{:>width$}", cell, width = col_width),
-                pulldown_cmark::Alignment::Center => format!("{:^width$}", cell, width = col_width),
-                _ => format!("{:<width$}", cell, width = col_width),
-            }
+        let text = match alignment {
+            pulldown_cmark::Alignment::Right => format!("{:>width$}", cell, width = col_width),
+            pulldown_cmark::Alignment::Center => format!("{:^width$}", cell, width = col_width),
+            _ => format!("{:<width$}", cell, width = col_width),
         };
 
         let style = if is_header {
