@@ -58,7 +58,7 @@ mdr <file.md>
 
 synthwave, monochrome, ocean, sunset, matrix, tokyo night moon
 
-Selected theme persists across sessions via `~/.config/mdr/config` (macOS: `~/Library/Application Support/mdr/config`).
+Selected theme persists across sessions in `~/.config/mdr/config.toml`.
 
 ## Requirements
 
