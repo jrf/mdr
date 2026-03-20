@@ -55,9 +55,9 @@ mdr <file.md>
 | `t` | Cycle theme |
 | `e` | Open in `$EDITOR` |
 | `Tab` / `Shift-Tab` | Next / previous tab |
-| `W` | Close current tab |
 | `?` | Help |
-| `q` / `Ctrl-c` | Quit |
+| `q` | Close tab / quit |
+| `Ctrl-c` | Quit |
 
 ### Themes
 

@@ -157,10 +157,15 @@ fn main() -> io::Result<()> {
                         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
 
                         match key.code {
-                            KeyCode::Char('q') => break,
                             KeyCode::Char('c') if ctrl => break,
                             _ => match state.mode {
                                 AppMode::Reader => match key.code {
+                                    KeyCode::Char('q') => {
+                                        if state.tabs.len() <= 1 {
+                                            break;
+                                        }
+                                        state.close_tab();
+                                    }
                                     KeyCode::Esc if !state.tab().search_query.is_empty() => {
                                         let tab = state.tab_mut();
                                         tab.search_query.clear();
@@ -226,7 +231,6 @@ fn main() -> io::Result<()> {
                                     }
                                     KeyCode::Home | KeyCode::Char('g') => state.tab_mut().cursor_top(),
                                     KeyCode::End | KeyCode::Char('G') => state.tab_mut().cursor_bottom(),
-                                    KeyCode::Char('W') => state.close_tab(),
                                     _ => needs_redraw = false,
                                 },
                                 AppMode::FilePicker => match key.code {

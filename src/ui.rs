@@ -538,9 +538,9 @@ fn draw_help(f: &mut Frame, state: &AppState) {
         ("e",            "Edit in $EDITOR"),
         ("t",            "Theme picker"),
         ("Tab / S-Tab",  "Next / previous tab"),
-        ("W",            "Close current tab"),
         ("?",            "Toggle help"),
-        ("q / Ctrl-c",   "Quit"),
+        ("q",            "Close tab / quit"),
+        ("Ctrl-c",       "Quit"),
     ];
 
     let max_content_width = help_lines
