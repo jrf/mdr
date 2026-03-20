@@ -9,13 +9,71 @@ use crate::browser::BrowserState;
 use crate::markdown::StyledLine;
 use crate::theme::Theme;
 
+#[allow(dead_code)]
+pub struct PickerState<T> {
+    pub items: Vec<T>,
+    pub selected: usize,
+    pub scroll: usize,
+}
+
+impl<T> PickerState<T> {
+    pub fn new(items: Vec<T>, initial_selected: usize) -> Self {
+        Self {
+            selected: initial_selected.min(items.len().saturating_sub(1)),
+            items,
+            scroll: 0,
+        }
+    }
+
+    pub fn select_next(&mut self) {
+        if !self.items.is_empty() {
+            self.selected = (self.selected + 1) % self.items.len();
+        }
+    }
+
+    pub fn select_prev(&mut self) {
+        if !self.items.is_empty() {
+            self.selected = if self.selected == 0 {
+                self.items.len() - 1
+            } else {
+                self.selected - 1
+            };
+        }
+    }
+
+    pub fn select_first(&mut self) {
+        self.selected = 0;
+        self.scroll = 0;
+    }
+
+    pub fn select_last(&mut self) {
+        if !self.items.is_empty() {
+            self.selected = self.items.len() - 1;
+        }
+    }
+
+    pub fn selected_item(&self) -> Option<&T> {
+        self.items.get(self.selected)
+    }
+
+    #[allow(dead_code)]
+    pub fn adjust_scroll(&mut self, visible_height: usize) {
+        if self.selected < self.scroll {
+            self.scroll = self.selected;
+        } else if self.selected >= self.scroll + visible_height {
+            self.scroll = self.selected.saturating_sub(visible_height - 1);
+        }
+    }
+}
+
 pub enum AppMode {
     Reader,
     Search,
     FilePicker,
     ThemePicker { original_index: usize },
-    FilterPicker,
-    TableOfContents,
+    FilterPicker { picker: PickerState<String> },
+    TableOfContents { picker: PickerState<(String, usize, u8)> },
+    BookmarkList { picker: PickerState<(usize, String)> },
     Help,
 }
 
@@ -489,11 +547,6 @@ pub struct AppState {
     pub themes: Vec<(String, Theme)>,
     pub browser: BrowserState,
     pub scrollbar: bool,
-    pub filter_options: Vec<String>,
-    pub filter_selected: usize,
-    pub toc_entries: Vec<(String, usize, u8)>, // (heading_text, line_index, level)
-    pub toc_selected: usize,
-    pub toc_scroll: usize,
 }
 
 impl AppState {
@@ -507,11 +560,6 @@ impl AppState {
             theme_index,
             themes,
             browser: BrowserState::new(dir),
-            filter_options: Vec::new(),
-            filter_selected: 0,
-            toc_entries: Vec::new(),
-            toc_selected: 0,
-            toc_scroll: 0,
             scrollbar,
         }
     }
@@ -530,11 +578,6 @@ impl AppState {
             theme_index,
             themes,
             browser: BrowserState::new(browser_dir),
-            filter_options: Vec::new(),
-            filter_selected: 0,
-            toc_entries: Vec::new(),
-            toc_selected: 0,
-            toc_scroll: 0,
             scrollbar,
         }
     }
@@ -614,16 +657,12 @@ impl AppState {
         let selected = entries.iter()
             .rposition(|(_, idx, _)| *idx <= cursor)
             .unwrap_or(0);
-        self.toc_entries = entries;
-        self.toc_selected = selected;
-        self.toc_scroll = 0;
-        self.mode = AppMode::TableOfContents;
+        self.mode = AppMode::TableOfContents { picker: PickerState::new(entries, selected) };
     }
 
     pub fn toc_confirm(&mut self) {
-        if matches!(self.mode, AppMode::TableOfContents) {
-            let display_idx = self.toc_entries.get(self.toc_selected)
-                .map(|(_, idx, _)| *idx);
+        if let AppMode::TableOfContents { ref picker } = self.mode {
+            let display_idx = picker.selected_item().map(|(_, idx, _)| *idx);
             if let Some(idx) = display_idx {
                 let tab = self.tab_mut();
                 tab.cursor = idx;
@@ -634,7 +673,54 @@ impl AppState {
     }
 
     pub fn toc_cancel(&mut self) {
-        if matches!(self.mode, AppMode::TableOfContents) {
+        if matches!(self.mode, AppMode::TableOfContents { .. }) {
+            self.mode = AppMode::Reader;
+        }
+    }
+
+    pub fn open_bookmark_list(&mut self) {
+        let tab = &self.tabs[self.active_tab];
+        if tab.bookmarks.is_empty() {
+            return;
+        }
+        let indices = tab.visible_line_indices();
+        let entries: Vec<(usize, String)> = tab.bookmarks.iter().map(|&pos| {
+            let text = indices.get(pos)
+                .and_then(|&line_idx| tab.cached_lines.get(line_idx))
+                .map(|sl| {
+                    sl.line.spans.iter()
+                        .map(|s| s.content.as_ref())
+                        .collect::<String>()
+                })
+                .unwrap_or_default();
+            let truncated = if text.len() > 50 {
+                format!("{}…", &text[..49])
+            } else {
+                text
+            };
+            (pos, truncated.trim().to_string())
+        }).collect();
+        let cursor = tab.cursor;
+        let selected = tab.bookmarks.iter()
+            .rposition(|&b| b <= cursor)
+            .unwrap_or(0);
+        self.mode = AppMode::BookmarkList { picker: PickerState::new(entries, selected) };
+    }
+
+    pub fn bookmark_list_confirm(&mut self) {
+        if let AppMode::BookmarkList { ref picker } = self.mode {
+            let pos = picker.selected_item().map(|(p, _)| *p);
+            if let Some(cursor) = pos {
+                let tab = self.tab_mut();
+                tab.cursor = cursor;
+                tab.ensure_cursor_visible();
+            }
+            self.mode = AppMode::Reader;
+        }
+    }
+
+    pub fn bookmark_list_cancel(&mut self) {
+        if matches!(self.mode, AppMode::BookmarkList { .. }) {
             self.mode = AppMode::Reader;
         }
     }
@@ -661,14 +747,13 @@ impl AppState {
         } else {
             0
         };
-        self.filter_options = options;
-        self.filter_selected = selected;
-        self.mode = AppMode::FilterPicker;
+        self.mode = AppMode::FilterPicker { picker: PickerState::new(options, selected) };
     }
 
     pub fn label_picker_confirm(&mut self) {
-        if matches!(self.mode, AppMode::FilterPicker) {
-            if let Some(option) = self.filter_options.get(self.filter_selected).cloned() {
+        if let AppMode::FilterPicker { ref picker } = self.mode {
+            let option = picker.selected_item().cloned();
+            if let Some(option) = option {
                 let tab = self.tab_mut();
                 if option == "None" {
                     tab.tag_filter = None;
@@ -683,7 +768,7 @@ impl AppState {
     }
 
     pub fn label_picker_cancel(&mut self) {
-        if matches!(self.mode, AppMode::FilterPicker) {
+        if matches!(self.mode, AppMode::FilterPicker { .. }) {
             self.mode = AppMode::Reader;
         }
     }

@@ -52,7 +52,8 @@ mdr <file.md>
 | `u` | Toggle unchecked task filter |
 | `l` | Filter by label |
 | `o` | Outline / table of contents |
-| `m` | Toggle bookmark |
+| `b` | Toggle bookmark |
+| `B` | Bookmark list |
 | `'` / `"` | Next / previous bookmark |
 | `/` | Search |
 | `n` / `N` | Next/previous match |

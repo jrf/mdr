@@ -23,8 +23,9 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
         AppMode::Reader | AppMode::Search => {}
         AppMode::FilePicker => draw_file_picker(f, state),
         AppMode::ThemePicker { .. } => draw_theme_picker(f, state),
-        AppMode::FilterPicker => draw_filter_picker(f, state),
-        AppMode::TableOfContents => draw_toc(f, state),
+        AppMode::FilterPicker { .. } => draw_filter_picker(f, state),
+        AppMode::TableOfContents { .. } => draw_toc(f, state),
+        AppMode::BookmarkList { .. } => draw_bookmark_list(f, state),
         AppMode::Help => draw_help(f, state),
     }
 }
@@ -162,9 +163,19 @@ fn draw_reader(f: &mut Frame, state: &mut AppState) {
         draw_tab_bar(f, state, chunks[0]);
     }
 
-    // Content area
-    let content_area = if show_tabs { chunks[2] } else { chunks[0] };
+    // Content area — split into gutter + body
+    let full_content_area = if show_tabs { chunks[2] } else { chunks[0] };
     let status_area = if show_tabs { chunks[3] } else { chunks[1] };
+
+    let gutter_width = 2u16;
+    let content_split = Layout::horizontal([
+        Constraint::Length(gutter_width),
+        Constraint::Min(1),
+    ])
+    .split(full_content_area);
+    let gutter_area = content_split[0];
+    let content_area = content_split[1];
+
     {
         let tab = state.tab_mut();
         let _parsed = tab.get_parsed_lines(content_area.width, theme);
@@ -181,6 +192,38 @@ fn draw_reader(f: &mut Frame, state: &mut AppState) {
     let visible_height = content_area.height as usize;
     let scroll = tab.scroll.min(total_lines.saturating_sub(visible_height));
     let cursor = tab.cursor;
+
+    // Build gutter lines
+    let gutter_lines: Vec<Line> = display_indices[scroll..]
+        .iter()
+        .enumerate()
+        .take(visible_height)
+        .map(|(i, &line_idx)| {
+            let sl = &tab.cached_lines[line_idx];
+            let is_bookmarked = tab.bookmarks.contains(&(scroll + i));
+
+            if sl.is_heading {
+                if let Some(ref text) = sl.heading_text {
+                    let indicator = if tab.folded_headings.contains(text) { "▶" } else { "▼" };
+                    return Line::from(Span::styled(
+                        format!("{} ", indicator),
+                        Style::default().fg(theme.text_dim),
+                    ));
+                }
+            }
+            if is_bookmarked {
+                return Line::from(Span::styled(
+                    "● ",
+                    Style::default().fg(theme.accent),
+                ));
+            }
+            Line::from("  ")
+        })
+        .collect();
+
+    f.render_widget(Paragraph::new(gutter_lines), gutter_area);
+
+    // Build content lines
     let visible: Vec<Line> = display_indices[scroll..]
         .iter()
         .enumerate()
@@ -192,27 +235,6 @@ fn draw_reader(f: &mut Frame, state: &mut AppState) {
             } else {
                 highlight_search(sl.line.clone(), &tab.search_query, theme)
             };
-            // Add fold indicator for headings
-            // Bookmark indicator
-            if tab.bookmarks.contains(&(scroll + i)) {
-                line.spans.insert(0, Span::styled(
-                    "● ".to_string(),
-                    Style::default().fg(theme.accent),
-                ));
-            }
-            if sl.is_heading {
-                if let Some(ref text) = sl.heading_text {
-                    let indicator = if tab.folded_headings.contains(text) {
-                        "▶ "
-                    } else {
-                        "▼ "
-                    };
-                    line.spans.insert(0, Span::styled(
-                        indicator.to_string(),
-                        Style::default().fg(theme.text_dim),
-                    ));
-                }
-            }
             // Highlight cursor line with a subtle background
             if scroll + i == cursor {
                 let cursor_style = Style::default().bg(theme.cursor_bg);
@@ -535,9 +557,13 @@ fn draw_theme_picker(f: &mut Frame, state: &AppState) {
 }
 
 fn draw_filter_picker(f: &mut Frame, state: &AppState) {
+    let picker = match &state.mode {
+        AppMode::FilterPicker { picker } => picker,
+        _ => return,
+    };
     let theme = state.theme;
     let area = f.area();
-    let options = &state.filter_options;
+    let options = &picker.items;
 
     let height = options.len() as u16 + 4;
     let width = 34;
@@ -565,7 +591,7 @@ fn draw_filter_picker(f: &mut Frame, state: &AppState) {
         .iter()
         .enumerate()
         .map(|(i, option)| {
-            let is_selected = i == state.filter_selected;
+            let is_selected = i == picker.selected;
             let is_active = match option.as_str() {
                 "None" => tab.tag_filter.is_none(),
                 tag => tab.tag_filter.as_deref() == Some(tag),
@@ -615,9 +641,13 @@ fn draw_filter_picker(f: &mut Frame, state: &AppState) {
 }
 
 fn draw_toc(f: &mut Frame, state: &AppState) {
+    let picker = match &state.mode {
+        AppMode::TableOfContents { picker } => picker,
+        _ => return,
+    };
     let theme = state.theme;
     let area = f.area();
-    let entries = &state.toc_entries;
+    let entries = &picker.items;
 
     let max_text_width = entries.iter()
         .map(|(text, _, level)| {
@@ -648,13 +678,12 @@ fn draw_toc(f: &mut Frame, state: &AppState) {
     .split(inner);
 
     let visible_height = chunks[0].height as usize;
-    // Adjust scroll to keep selected visible
-    let scroll = if state.toc_selected < state.toc_scroll {
-        state.toc_selected
-    } else if state.toc_selected >= state.toc_scroll + visible_height {
-        state.toc_selected.saturating_sub(visible_height - 1)
+    let scroll = if picker.selected < picker.scroll {
+        picker.selected
+    } else if picker.selected >= picker.scroll + visible_height {
+        picker.selected.saturating_sub(visible_height - 1)
     } else {
-        state.toc_scroll
+        picker.scroll
     };
 
     let lines: Vec<Line> = entries
@@ -663,7 +692,7 @@ fn draw_toc(f: &mut Frame, state: &AppState) {
         .skip(scroll)
         .take(visible_height)
         .map(|(i, (text, _, level))| {
-            let is_selected = i == state.toc_selected;
+            let is_selected = i == picker.selected;
             let indent = " ".repeat((*level as usize).saturating_sub(1) * 2);
             let prefix = if is_selected { " > " } else { "   " };
             let color = match level {
@@ -703,6 +732,83 @@ fn draw_toc(f: &mut Frame, state: &AppState) {
     f.render_widget(Paragraph::new(hint), chunks[1]);
 }
 
+fn draw_bookmark_list(f: &mut Frame, state: &AppState) {
+    let picker = match &state.mode {
+        AppMode::BookmarkList { picker } => picker,
+        _ => return,
+    };
+    let theme = state.theme;
+    let area = f.area();
+
+    let height = (picker.items.len() as u16 + 4).min(area.height.saturating_sub(4));
+    let width = 56u16.min(area.width.saturating_sub(4));
+    let popup = centered_rect(width, height, area);
+
+    f.render_widget(Clear, popup);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.accent))
+        .title(" Bookmarks ")
+        .title_style(Style::default().fg(theme.accent).add_modifier(Modifier::BOLD));
+
+    let inner = block.inner(popup);
+    f.render_widget(block, popup);
+
+    let chunks = Layout::vertical([
+        Constraint::Min(1),
+        Constraint::Length(1),
+    ])
+    .split(inner);
+
+    let visible_height = chunks[0].height as usize;
+    let scroll = if picker.selected < picker.scroll {
+        picker.selected
+    } else if picker.selected >= picker.scroll + visible_height {
+        picker.selected.saturating_sub(visible_height - 1)
+    } else {
+        picker.scroll
+    };
+
+    let lines: Vec<Line> = picker.items.iter()
+        .enumerate()
+        .skip(scroll)
+        .take(visible_height)
+        .map(|(i, (_pos, text))| {
+            let is_selected = i == picker.selected;
+            let prefix = if is_selected { " > " } else { "   " };
+            let style = if is_selected {
+                Style::default()
+                    .fg(theme.text_bright)
+                    .bg(theme.cursor_bg)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(theme.text)
+            };
+            let mut line = Line::from(Span::styled(format!("{}{}", prefix, text), style));
+            if is_selected {
+                let content_width: usize = line.spans.iter().map(|s| s.content.width()).sum();
+                let area_width = chunks[0].width as usize;
+                if content_width < area_width {
+                    line.spans.push(Span::styled(
+                        " ".repeat(area_width - content_width),
+                        Style::default().bg(theme.cursor_bg),
+                    ));
+                }
+            }
+            line
+        })
+        .collect();
+
+    f.render_widget(Paragraph::new(lines), chunks[0]);
+
+    let hint = Line::from(Span::styled(
+        " j/k:select  enter:jump  esc/B:cancel",
+        Style::default().fg(theme.text_muted),
+    ));
+    f.render_widget(Paragraph::new(hint), chunks[1]);
+}
+
 fn draw_help(f: &mut Frame, state: &AppState) {
     let theme = state.theme;
     let area = f.area();
@@ -721,7 +827,8 @@ fn draw_help(f: &mut Frame, state: &AppState) {
         ("u",            "Toggle unchecked task filter"),
         ("l",            "Filter by label"),
         ("o",            "Outline / table of contents"),
-        ("m",            "Toggle bookmark"),
+        ("b",            "Toggle bookmark"),
+        ("B",            "Bookmark list"),
         ("' / \"",       "Next / previous bookmark"),
         ("/",            "Search"),
         ("n / N",        "Next / previous match"),

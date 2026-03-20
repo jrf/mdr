@@ -186,7 +186,8 @@ fn main() -> io::Result<()> {
                                     }
                                     KeyCode::Char('l') => state.open_label_picker(),
                                     KeyCode::Char('o') => state.open_toc(),
-                                    KeyCode::Char('m') => state.tab_mut().toggle_bookmark(),
+                                    KeyCode::Char('b') if !ctrl => state.tab_mut().toggle_bookmark(),
+                                    KeyCode::Char('B') => state.open_bookmark_list(),
                                     KeyCode::Char('\'') => state.tab_mut().next_bookmark(),
                                     KeyCode::Char('"') => state.tab_mut().prev_bookmark(),
                                     KeyCode::Char('t') => state.open_theme_picker(),
@@ -378,60 +379,31 @@ fn main() -> io::Result<()> {
                                     KeyCode::Esc => state.theme_picker_cancel(),
                                     _ => needs_redraw = false,
                                 },
-                                AppMode::FilterPicker => match key.code {
-                                    KeyCode::Char('j') | KeyCode::Down => {
-                                        let len = state.filter_options.len();
-                                        if len > 0 {
-                                            state.filter_selected = (state.filter_selected + 1) % len;
-                                        }
-                                    }
-                                    KeyCode::Char('k') | KeyCode::Up => {
-                                        let len = state.filter_options.len();
-                                        if len > 0 {
-                                            state.filter_selected = if state.filter_selected == 0 {
-                                                len - 1
-                                            } else {
-                                                state.filter_selected - 1
-                                            };
-                                        }
-                                    }
-                                    KeyCode::Home => state.filter_selected = 0,
-                                    KeyCode::End => {
-                                        let len = state.filter_options.len();
-                                        if len > 0 {
-                                            state.filter_selected = len - 1;
-                                        }
-                                    }
+                                AppMode::FilterPicker { ref mut picker } => match key.code {
+                                    KeyCode::Char('j') | KeyCode::Down => picker.select_next(),
+                                    KeyCode::Char('k') | KeyCode::Up => picker.select_prev(),
+                                    KeyCode::Home => picker.select_first(),
+                                    KeyCode::End => picker.select_last(),
                                     KeyCode::Enter => state.label_picker_confirm(),
                                     KeyCode::Esc | KeyCode::Char('l') => state.label_picker_cancel(),
                                     _ => needs_redraw = false,
                                 },
-                                AppMode::TableOfContents => match key.code {
-                                    KeyCode::Char('j') | KeyCode::Down => {
-                                        let len = state.toc_entries.len();
-                                        if len > 0 {
-                                            state.toc_selected = (state.toc_selected + 1) % len;
-                                        }
-                                    }
-                                    KeyCode::Char('k') | KeyCode::Up => {
-                                        let len = state.toc_entries.len();
-                                        if len > 0 {
-                                            state.toc_selected = if state.toc_selected == 0 {
-                                                len - 1
-                                            } else {
-                                                state.toc_selected - 1
-                                            };
-                                        }
-                                    }
-                                    KeyCode::Home => state.toc_selected = 0,
-                                    KeyCode::End => {
-                                        let len = state.toc_entries.len();
-                                        if len > 0 {
-                                            state.toc_selected = len - 1;
-                                        }
-                                    }
+                                AppMode::TableOfContents { ref mut picker } => match key.code {
+                                    KeyCode::Char('j') | KeyCode::Down => picker.select_next(),
+                                    KeyCode::Char('k') | KeyCode::Up => picker.select_prev(),
+                                    KeyCode::Home => picker.select_first(),
+                                    KeyCode::End => picker.select_last(),
                                     KeyCode::Enter => state.toc_confirm(),
                                     KeyCode::Esc | KeyCode::Char('o') => state.toc_cancel(),
+                                    _ => needs_redraw = false,
+                                },
+                                AppMode::BookmarkList { ref mut picker } => match key.code {
+                                    KeyCode::Char('j') | KeyCode::Down => picker.select_next(),
+                                    KeyCode::Char('k') | KeyCode::Up => picker.select_prev(),
+                                    KeyCode::Home => picker.select_first(),
+                                    KeyCode::End => picker.select_last(),
+                                    KeyCode::Enter => state.bookmark_list_confirm(),
+                                    KeyCode::Esc | KeyCode::Char('B') => state.bookmark_list_cancel(),
                                     _ => needs_redraw = false,
                                 },
                                 AppMode::Help => match key.code {
