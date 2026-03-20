@@ -9,10 +9,12 @@ red = "#ff6b6b"
 orange = "#f4a261"
 yellow = "#e9c46a"
 green = "#76c893"
-cyan = "#4cc9f0"
+cyan = "#00ccff"
+aqua = "#00ffcc"
 blue = "#4895ef"
 magenta = "#b07cc6"
 teal = "#2ec4b6"
+sea_green = "#66ffaa"
 
 [ui]
 border = "fg_muted"
