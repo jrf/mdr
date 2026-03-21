@@ -5,6 +5,7 @@ use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph, Scrollbar, Scr
 use ratatui::Frame;
 use unicode_width::UnicodeWidthStr;
 
+use crate::markdown::tag_color;
 use crate::state::{AppMode, AppState};
 
 fn shorten_path(path: &str) -> String {
@@ -336,7 +337,7 @@ fn draw_reader(f: &mut Frame, state: &mut AppState) {
             status_spans.push(Span::styled(" │ ", Style::default().fg(theme.border)));
             status_spans.push(Span::styled(
                 format!("#{}",tag),
-                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+                Style::default().fg(tag_color(tag, &theme)).add_modifier(Modifier::BOLD),
             ));
         }
 
