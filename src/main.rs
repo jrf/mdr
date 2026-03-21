@@ -195,7 +195,8 @@ fn main() -> io::Result<()> {
                                         tab.cursor = 0;
                                         tab.scroll = 0;
                                     }
-                                    KeyCode::Char('l') => state.open_label_picker(),
+                                    KeyCode::Char('l') => state.cycle_tag_filter(),
+                                    KeyCode::Char('L') => state.open_label_picker(),
                                     KeyCode::Char('o') => state.open_toc(),
                                     KeyCode::Char('b') if !ctrl => state.tab_mut().toggle_bookmark(),
                                     KeyCode::Char('B') => state.open_bookmark_list(),

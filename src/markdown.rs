@@ -55,6 +55,8 @@ pub struct StyledLine<'a> {
     pub tags: Vec<String>,
     /// Link destination if this line contains a markdown link
     pub link_url: Option<String>,
+    /// True if this line starts a new list item (bullet or task)
+    pub is_list_item_start: bool,
 }
 
 /// Resolve a tag name to its label color, or a default tag color.
@@ -100,6 +102,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
     let mut list_stack: Vec<Option<u64>> = Vec::new();
     let mut list_item_first_para = false;
     let mut list_indent: usize = 0;
+    let mut pending_list_item_start = false;
     let mut in_table = false;
     let mut table_cell_buf = String::new();
     let mut table_row: Vec<String> = Vec::new();
@@ -118,7 +121,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
             _ if in_metadata => continue,
             Event::Start(tag) => match tag {
                 Tag::Heading { level, .. } => {
-                    flush_line(&mut lines, &mut current_spans, task_source_line, &mut current_tags, &mut current_link_url);
+                    flush_line(&mut lines, &mut current_spans, task_source_line, &mut current_tags, &mut current_link_url, &mut pending_list_item_start);
                     in_heading = Some(level as u8);
                 }
                 Tag::Paragraph => {}
@@ -137,9 +140,10 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                     list_stack.push(start);
                 }
                 Tag::Item => {
-                    flush_line(&mut lines, &mut current_spans, task_source_line, &mut current_tags, &mut current_link_url);
+                    flush_line(&mut lines, &mut current_spans, task_source_line, &mut current_tags, &mut current_link_url, &mut pending_list_item_start);
                     in_list_item = true;
                     list_item_first_para = true;
+                    pending_list_item_start = true;
                     task_source_line = None;
                     // Calculate indent based on nesting depth (depth >= 2 means nested)
                     let depth = list_stack.len();
@@ -171,7 +175,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                     in_heading = None;
                 }
                 TagEnd::Paragraph => {
-                    flush_line(&mut lines, &mut current_spans, task_source_line, &mut current_tags, &mut current_link_url);
+                    flush_line(&mut lines, &mut current_spans, task_source_line, &mut current_tags, &mut current_link_url, &mut pending_list_item_start);
                     if !in_list_item {
                         push_blank(&mut lines);
                     }
@@ -195,6 +199,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                             source_line: None,
                             tags: Vec::new(),
                             link_url: None,
+                            is_list_item_start: false,
                         });
                     }
                     push_blank(&mut lines);
@@ -209,7 +214,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                     }
                 }
                 TagEnd::Item => {
-                    flush_line(&mut lines, &mut current_spans, task_source_line, &mut current_tags, &mut current_link_url);
+                    flush_line(&mut lines, &mut current_spans, task_source_line, &mut current_tags, &mut current_link_url, &mut pending_list_item_start);
                     in_list_item = false;
                     task_source_line = None;
                 }
@@ -249,6 +254,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                                 source_line: None,
                                 tags: Vec::new(),
                                 link_url: None,
+                                is_list_item_start: false,
                             });
                         }
                     }
@@ -351,7 +357,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                     for word in words {
                         let wlen = word.width();
                         if line_len > 0 && line_len + 1 + wlen > max_width {
-                            flush_line(&mut lines, &mut current_spans, task_source_line, &mut current_tags, &mut current_link_url);
+                            flush_line(&mut lines, &mut current_spans, task_source_line, &mut current_tags, &mut current_link_url, &mut pending_list_item_start);
                             // Add continuation indent for list items
                             if in_list_item && list_indent > 0 {
                                 let indent = " ".repeat(list_indent);
@@ -433,10 +439,10 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                 list_item_first_para = false;
             }
             Event::SoftBreak | Event::HardBreak => {
-                flush_line(&mut lines, &mut current_spans, task_source_line, &mut current_tags, &mut current_link_url);
+                flush_line(&mut lines, &mut current_spans, task_source_line, &mut current_tags, &mut current_link_url, &mut pending_list_item_start);
             }
             Event::Rule => {
-                flush_line(&mut lines, &mut current_spans, task_source_line, &mut current_tags, &mut current_link_url);
+                flush_line(&mut lines, &mut current_spans, task_source_line, &mut current_tags, &mut current_link_url, &mut pending_list_item_start);
                 let rule = "─".repeat(width.saturating_sub(2) as usize);
                 lines.push(StyledLine {
                     line: Line::from(Span::styled(
@@ -450,6 +456,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                     source_line: None,
                     tags: Vec::new(),
                     link_url: None,
+                    is_list_item_start: false,
                 });
                 push_blank(&mut lines);
             }
@@ -457,7 +464,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
         }
     }
 
-    flush_line(&mut lines, &mut current_spans, task_source_line, &mut current_tags, &mut current_link_url);
+    flush_line(&mut lines, &mut current_spans, task_source_line, &mut current_tags, &mut current_link_url, &mut pending_list_item_start);
 
     // Remove trailing blank lines
     while lines.last().map_or(false, |l| l.is_blank) {
@@ -508,6 +515,7 @@ fn emit_table_row(
         source_line: None,
         tags: Vec::new(),
         link_url: None,
+        is_list_item_start: false,
     });
 }
 
@@ -525,6 +533,7 @@ fn push_blank(lines: &mut Vec<StyledLine<'static>>) {
         source_line: None,
         tags: Vec::new(),
         link_url: None,
+        is_list_item_start: false,
     });
 }
 
@@ -534,11 +543,13 @@ fn flush_line(
     source_line: Option<usize>,
     tags: &mut Vec<String>,
     link_url: &mut Option<String>,
+    is_list_item_start: &mut bool,
 ) {
     if spans.is_empty() {
         return;
     }
     let line = Line::from(std::mem::take(spans));
+    let starts_item = std::mem::replace(is_list_item_start, false);
     lines.push(StyledLine {
         line,
         is_blank: false,
@@ -548,6 +559,7 @@ fn flush_line(
         source_line,
         tags: std::mem::take(tags),
         link_url: link_url.take(),
+        is_list_item_start: starts_item,
     });
 }
 
@@ -572,5 +584,6 @@ fn flush_line_heading(
         source_line: None,
         tags: std::mem::take(tags),
         link_url: link_url.take(),
+        is_list_item_start: false,
     });
 }

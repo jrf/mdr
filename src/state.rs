@@ -384,6 +384,16 @@ impl Tab {
                         group_has_tag = false;
                     }
                 } else {
+                    // A new list item starts a new group
+                    if sl.is_list_item_start && group_start.is_some() {
+                        let start = group_start.take().unwrap();
+                        if group_has_tag {
+                            for j in start..i {
+                                membership[j] = true;
+                            }
+                        }
+                        group_has_tag = false;
+                    }
                     if group_start.is_none() {
                         group_start = Some(i);
                     }
@@ -771,6 +781,32 @@ impl AppState {
             .collect()
     }
 
+    pub fn cycle_tag_filter(&mut self) {
+        let tags = self.tab().collect_tags();
+        if tags.is_empty() {
+            return;
+        }
+        let current = self.tab().tag_filter.clone();
+        let next = match current {
+            None => Some(tags[0].clone()),
+            Some(ref tag) => {
+                match tags.iter().position(|t| t == tag) {
+                    Some(i) if i + 1 < tags.len() => Some(tags[i + 1].clone()),
+                    _ => None, // wrap back to no filter
+                }
+            }
+        };
+        let tab = self.tab_mut();
+        match next {
+            Some(tag) => tab.set_tag_filter(tag),
+            None => {
+                tab.tag_filter = None;
+                tab.cursor = 0;
+                tab.scroll = 0;
+            }
+        }
+    }
+
     pub fn open_label_picker(&mut self) {
         let tags = self.tab().collect_tags();
         if tags.is_empty() {
@@ -906,6 +942,7 @@ fn filter_task_lines(lines: Vec<StyledLine<'static>>) -> Vec<StyledLine<'static>
                     source_line: None,
                     tags: Vec::new(),
                     link_url: None,
+                    is_list_item_start: false,
                 });
             }
             result.push(sl);
@@ -919,6 +956,7 @@ fn filter_task_lines(lines: Vec<StyledLine<'static>>) -> Vec<StyledLine<'static>
                 source_line: None,
                 tags: Vec::new(),
                 link_url: None,
+                is_list_item_start: false,
             });
         } else if sl.source_line.is_some() {
             // Check the marker span (first span) for unchecked status
