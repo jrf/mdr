@@ -375,7 +375,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                         // Detect #tags (not inside headings or code blocks)
                         if in_heading.is_none() && !in_code_block {
                             if let Some(tag_name) = word.strip_prefix('#') {
-                                if !tag_name.is_empty() && tag_name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+                                if !tag_name.is_empty() && tag_name.chars().any(|c| c.is_alphabetic()) && tag_name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
                                     let color = tag_color(&tag_name.to_lowercase(), &theme);
                                     current_spans.push(Span::styled(
                                         word.to_string(),
