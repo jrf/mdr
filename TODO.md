@@ -5,14 +5,16 @@
 ## Next
 
 - [ ] Task summary in status bar (e.g., `3/7 tasks`) #feature
-- [ ] Accept stdin (`cat file.md | mdr`) #feature
 - [ ] Browser preview pane (split layout showing selected file) #improvement
 - [ ] Inline image rendering via Sixel (with fallback to `[image: alt text]` placeholder) #feature
 - [ ] Footnote rendering #feature
 - [ ] Tidy command — keybind to move completed `[x]` tasks to a "Done" section #feature
 - [ ] Indented outline mode — optional indent of content under headings #improvement
+- [ ] Heading jump with `{`/`}` — jump to previous/next heading like vim paragraph motion #feature
 
 ## Later
+
+- [ ] LaTeX math Unicode approximation — render `$...$` and `$$...$$` with Greek letters, super/subscripts, and common symbols #feature
 
 ## Scrapped
 
