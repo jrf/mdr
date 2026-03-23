@@ -6,7 +6,7 @@ A terminal markdown reader with live file watching.
 
 ## Features
 
-- Renders markdown with styled headings, bold, italic, code blocks, blockquotes, lists, task lists, and horizontal rules
+- Renders markdown with styled headings, bold, italic, code blocks, blockquotes, lists, task lists, horizontal rules, and `[[wikilinks]]`
 - Live reload — file changes are reflected instantly
 - Vim-style scrolling (`j`/`k`, `g`/`G`, `Ctrl-f`/`Ctrl-b`)
 - File picker overlay — press `f`, type to filter, enter to open
@@ -45,7 +45,7 @@ mdr <file.md>
 | `Ctrl-b` / `PageUp` | Page up |
 | `g` / `Home` | Go to top |
 | `G` / `End` | Go to bottom |
-| `Enter` | Fold/unfold section |
+| `Enter` | Fold/unfold section, follow link |
 | `[` / `]` | Fold all / unfold all |
 | `x` / `Space` | Toggle task checkbox |
 | `Ctrl-n` / `Ctrl-p` | Next / previous unchecked task |

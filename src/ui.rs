@@ -828,7 +828,7 @@ fn draw_help(f: &mut Frame, state: &AppState) {
         ("Ctrl-b",       "Page up"),
         ("g / Home",     "Go to top"),
         ("G / End",      "Go to bottom"),
-        ("Enter",        "Fold/unfold section"),
+        ("Enter",        "Fold/unfold / follow link"),
         ("[ / ]",        "Fold all / unfold all"),
         ("x / Space",    "Toggle task checkbox"),
         ("Ctrl-n / p",   "Next / previous unchecked task"),

@@ -25,6 +25,7 @@
 
 - [x] Table of contents overlay — `o` to list headings, jump to any section #feature
 - [x] Follow markdown links — Enter on `.md` links opens in tab, URLs open browser #feature
+- [x] Obsidian-style `[[wikilinks]]` — parsed and navigable via Enter #feature
 - [x] Bookmarks — `m` to toggle, `'`/`"` to cycle #feature
 - [x] Inline `#tag` rendering with color-coded category labels #feature
 - [x] Fold all / unfold all with `[` / `]` #feature

@@ -1,4 +1,4 @@
-use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{CodeBlockKind, Event, LinkType, Options, Parser, Tag, TagEnd};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use syntect::highlighting::ThemeSet;
@@ -81,6 +81,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
     opts.insert(Options::ENABLE_TABLES);
     opts.insert(Options::ENABLE_TASKLISTS);
     opts.insert(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS);
+    opts.insert(Options::ENABLE_WIKILINKS);
 
     let parser = Parser::new_ext(source, opts);
     let mut lines: Vec<StyledLine<'static>> = Vec::new();
@@ -156,8 +157,12 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                     in_table = true;
                     table_alignments = alignments;
                 }
-                Tag::Link { dest_url, .. } => {
-                    current_link_url = Some(dest_url.to_string());
+                Tag::Link { link_type, dest_url, .. } => {
+                    let url = dest_url.to_string();
+                    current_link_url = Some(match link_type {
+                        LinkType::WikiLink { .. } => format!("{}.md", url),
+                        _ => url,
+                    });
                 }
                 Tag::TableHead => {}
                 Tag::TableRow => {}
