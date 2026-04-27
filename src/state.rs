@@ -202,14 +202,81 @@ impl Tab {
         &self.cached_lines
     }
 
+    /// Walk back to the first visible line that shares the same source_line
+    /// (i.e. the start of a wrapped task/list item group).
+    fn logical_line_start(&self, indices: &[usize], visible_idx: usize) -> usize {
+        let src = match indices
+            .get(visible_idx)
+            .and_then(|&i| self.cached_lines.get(i).and_then(|sl| sl.source_line))
+        {
+            Some(s) => s,
+            None => return visible_idx,
+        };
+        let mut j = visible_idx;
+        while j > 0 {
+            let prev = indices[j - 1];
+            if self.cached_lines.get(prev).and_then(|sl| sl.source_line) != Some(src) {
+                break;
+            }
+            j -= 1;
+        }
+        j
+    }
+
+    /// Walk forward to the last visible line that shares the same source_line.
+    fn logical_line_end(&self, indices: &[usize], visible_idx: usize) -> usize {
+        let src = match indices
+            .get(visible_idx)
+            .and_then(|&i| self.cached_lines.get(i).and_then(|sl| sl.source_line))
+        {
+            Some(s) => s,
+            None => return visible_idx,
+        };
+        let mut j = visible_idx;
+        while j + 1 < indices.len() {
+            let next = indices[j + 1];
+            if self.cached_lines.get(next).and_then(|sl| sl.source_line) != Some(src) {
+                break;
+            }
+            j += 1;
+        }
+        j
+    }
+
     pub fn cursor_down(&mut self, n: usize) {
-        let max = self.total_lines.saturating_sub(1);
-        self.cursor = self.cursor.saturating_add(n).min(max);
+        let indices = self.visible_line_indices();
+        if indices.is_empty() {
+            return;
+        }
+        let max = indices.len() - 1;
+        let mut cursor = self.cursor.min(max);
+        for _ in 0..n {
+            let end = self.logical_line_end(&indices, cursor);
+            if end >= max {
+                cursor = max;
+                break;
+            }
+            cursor = end + 1;
+        }
+        self.cursor = self.logical_line_start(&indices, cursor);
         self.ensure_cursor_visible();
     }
 
     pub fn cursor_up(&mut self, n: usize) {
-        self.cursor = self.cursor.saturating_sub(n);
+        let indices = self.visible_line_indices();
+        if indices.is_empty() {
+            return;
+        }
+        let mut cursor = self.cursor.min(indices.len() - 1);
+        for _ in 0..n {
+            let start = self.logical_line_start(&indices, cursor);
+            if start == 0 {
+                cursor = 0;
+                break;
+            }
+            cursor = self.logical_line_start(&indices, start - 1);
+        }
+        self.cursor = cursor;
         self.ensure_cursor_visible();
     }
 

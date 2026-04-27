@@ -193,6 +193,9 @@ fn draw_reader(f: &mut Frame, state: &mut AppState) {
     let visible_height = content_area.height as usize;
     let scroll = tab.scroll.min(total_lines.saturating_sub(visible_height));
     let cursor = tab.cursor;
+    let cursor_source_line = display_indices
+        .get(cursor)
+        .and_then(|&idx| tab.cached_lines.get(idx).and_then(|sl| sl.source_line));
 
     // Build gutter lines
     let gutter_lines: Vec<Line> = display_indices[scroll..]
@@ -234,8 +237,14 @@ fn draw_reader(f: &mut Frame, state: &mut AppState) {
             } else {
                 highlight_search(sl.line.clone(), &tab.search_query, theme)
             };
-            // Highlight cursor line with a subtle background
-            if scroll + i == cursor {
+            // Highlight cursor line with a subtle background. For wrapped task
+            // items, also highlight sibling lines that share the same source line
+            // so the whole logical item is visually selected.
+            let is_cursor_line = scroll + i == cursor;
+            let is_wrap_companion = !is_cursor_line
+                && cursor_source_line.is_some()
+                && sl.source_line == cursor_source_line;
+            if is_cursor_line || is_wrap_companion {
                 let cursor_style = Style::default().bg(theme.cursor_bg);
                 for span in &mut line.spans {
                     span.style = span.style.bg(theme.cursor_bg);
