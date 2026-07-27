@@ -23,6 +23,7 @@
 
 ## Done
 
+- [x] Cache syntect `SyntaxSet`/`ThemeSet` in `LazyLock` — load defaults once instead of per code block/re-parse #improvement
 - [x] Stdin support — pipe markdown via `cat file.md | mdr` #feature
 - [x] Table of contents overlay — `o` to list headings, jump to any section #feature
 - [x] Follow markdown links — Enter on `.md` links opens in tab, URLs open browser #feature

@@ -1,19 +1,27 @@
+use std::sync::LazyLock;
+
 use pulldown_cmark::{CodeBlockKind, Event, LinkType, Options, Parser, Tag, TagEnd};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use syntect::highlighting::ThemeSet;
+use syntect::highlighting::{Theme as SyntectTheme, ThemeSet};
 use syntect::parsing::SyntaxSet;
 use unicode_width::UnicodeWidthStr;
 
 use crate::theme::Theme;
 
+// Loading syntect's default syntaxes and themes deserializes a large embedded
+// binary dump, so cache them once for the lifetime of the process rather than
+// rebuilding them on every code block / re-parse.
+static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
+static SYNTAX_THEME: LazyLock<SyntectTheme> =
+    LazyLock::new(|| ThemeSet::load_defaults().themes["base16-ocean.dark"].clone());
+
 fn syntect_highlight(code: &str, lang: &str, _theme: &Theme) -> Vec<Vec<Span<'static>>> {
-    let ss = SyntaxSet::load_defaults_newlines();
-    let ts = ThemeSet::load_defaults();
+    let ss = &*SYNTAX_SET;
+    let syn_theme = &*SYNTAX_THEME;
     let syntax = ss
         .find_syntax_by_token(lang)
         .unwrap_or_else(|| ss.find_syntax_plain_text());
-    let syn_theme = &ts.themes["base16-ocean.dark"];
 
     let mut highlighter = syntect::easy::HighlightLines::new(syntax, syn_theme);
     let mut result = Vec::new();
