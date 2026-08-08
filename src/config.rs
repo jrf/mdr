@@ -1,15 +1,27 @@
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::theme::ThemeConfig;
 
 const EMBEDDED_THEMES: &[(&str, &str)] = &[
-    ("catppuccin frappe", include_str!("../themes/catppuccin-frappe.toml")),
-    ("catppuccin latte", include_str!("../themes/catppuccin-latte.toml")),
-    ("catppuccin macchiato", include_str!("../themes/catppuccin-macchiato.toml")),
-    ("catppuccin mocha", include_str!("../themes/catppuccin-mocha.toml")),
+    (
+        "catppuccin frappe",
+        include_str!("../themes/catppuccin-frappe.toml"),
+    ),
+    (
+        "catppuccin latte",
+        include_str!("../themes/catppuccin-latte.toml"),
+    ),
+    (
+        "catppuccin macchiato",
+        include_str!("../themes/catppuccin-macchiato.toml"),
+    ),
+    (
+        "catppuccin mocha",
+        include_str!("../themes/catppuccin-mocha.toml"),
+    ),
     ("classic", include_str!("../themes/classic.toml")),
     ("fire", include_str!("../themes/fire.toml")),
     ("matrix", include_str!("../themes/matrix.toml")),
@@ -19,9 +31,18 @@ const EMBEDDED_THEMES: &[(&str, &str)] = &[
     ("sunset", include_str!("../themes/sunset.toml")),
     ("synthwave", include_str!("../themes/synthwave.toml")),
     ("tokyo night", include_str!("../themes/tokyo-night.toml")),
-    ("tokyo night day", include_str!("../themes/tokyo-night-day.toml")),
-    ("tokyo night moon", include_str!("../themes/tokyo-night-moon.toml")),
-    ("tokyo night storm", include_str!("../themes/tokyo-night-storm.toml")),
+    (
+        "tokyo night day",
+        include_str!("../themes/tokyo-night-day.toml"),
+    ),
+    (
+        "tokyo night moon",
+        include_str!("../themes/tokyo-night-moon.toml"),
+    ),
+    (
+        "tokyo night storm",
+        include_str!("../themes/tokyo-night-storm.toml"),
+    ),
 ];
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -36,8 +57,12 @@ fn default_scrollbar() -> bool {
     true
 }
 
+fn config_root() -> Option<PathBuf> {
+    dirs::home_dir().map(|d| d.join(".config"))
+}
+
 fn config_dir() -> Option<PathBuf> {
-    dirs::home_dir().map(|d| d.join(".config").join("mdr"))
+    config_root().map(|d| d.join("mdr"))
 }
 
 fn config_path() -> Option<PathBuf> {
@@ -48,17 +73,34 @@ fn themes_dir() -> Option<PathBuf> {
     config_dir().map(|d| d.join("themes"))
 }
 
+fn shared_themes_dir() -> Option<PathBuf> {
+    config_root().map(|d| d.join("themes"))
+}
+
 pub fn load_config() -> Config {
     let path = match config_path() {
         Some(p) => p,
-        None => return Config { scrollbar: true, ..Default::default() },
+        None => {
+            return Config {
+                scrollbar: true,
+                ..Default::default()
+            };
+        }
     };
     let contents = match fs::read_to_string(path) {
         Ok(c) => c,
-        Err(_) => return Config { scrollbar: true, ..Default::default() },
+        Err(_) => {
+            return Config {
+                scrollbar: true,
+                ..Default::default()
+            };
+        }
     };
 
-    toml::from_str(&contents).unwrap_or(Config { scrollbar: true, ..Default::default() })
+    toml::from_str(&contents).unwrap_or(Config {
+        scrollbar: true,
+        ..Default::default()
+    })
 }
 
 fn embedded_theme_configs() -> BTreeMap<String, ThemeConfig> {
@@ -71,19 +113,24 @@ fn embedded_theme_configs() -> BTreeMap<String, ThemeConfig> {
         .collect()
 }
 
-/// Load built-in themes, then overlay ~/.config/mdr/themes/*.toml.
-/// User theme names are derived from filenames and override matching built-ins.
+/// Load built-ins, shared themes, then app-specific theme overrides.
 pub fn load_theme_configs() -> BTreeMap<String, ThemeConfig> {
     let mut themes = embedded_theme_configs();
 
-    let dir = match themes_dir() {
-        Some(d) => d,
-        None => return themes,
-    };
+    if let Some(dir) = shared_themes_dir() {
+        overlay_theme_dir(&mut themes, &dir);
+    }
+    if let Some(dir) = themes_dir() {
+        overlay_theme_dir(&mut themes, &dir);
+    }
 
-    let entries = match fs::read_dir(&dir) {
+    themes
+}
+
+fn overlay_theme_dir(themes: &mut BTreeMap<String, ThemeConfig>, dir: &Path) {
+    let entries = match fs::read_dir(dir) {
         Ok(e) => e,
-        Err(_) => return themes,
+        Err(_) => return,
     };
 
     for entry in entries.flatten() {
@@ -103,8 +150,6 @@ pub fn load_theme_configs() -> BTreeMap<String, ThemeConfig> {
             themes.insert(name, cfg);
         }
     }
-
-    themes
 }
 
 #[cfg(test)]
