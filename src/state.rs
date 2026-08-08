@@ -1003,9 +1003,6 @@ impl AppState {
 
     pub fn theme_picker_confirm(&mut self) {
         if matches!(self.mode, AppMode::ThemePicker { .. }) {
-            let mut cfg = crate::config::load_config();
-            cfg.theme = Some(self.themes[self.theme_index].0.clone());
-            crate::config::save_config(&cfg);
             self.mode = AppMode::Reader;
         }
     }

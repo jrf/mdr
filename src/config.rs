@@ -1,11 +1,11 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
 use crate::theme::ThemeConfig;
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct Config {
     #[serde(default)]
     pub theme: Option<String>,
@@ -76,15 +76,4 @@ pub fn load_theme_configs() -> BTreeMap<String, ThemeConfig> {
     }
 
     themes
-}
-
-pub fn save_config(config: &Config) {
-    if let Some(path) = config_path() {
-        if let Some(parent) = path.parent() {
-            let _ = fs::create_dir_all(parent);
-        }
-        if let Ok(contents) = toml::to_string_pretty(config) {
-            let _ = fs::write(path, contents);
-        }
-    }
 }

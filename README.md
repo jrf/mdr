@@ -84,6 +84,8 @@ theme = "tokyo night moon"
 scrollbar = true
 ```
 
+The in-app theme picker changes the theme for the current session only. Set `theme` here to choose the startup theme.
+
 Themes live in `~/.config/mdr/themes/` as individual `.toml` files. The theme name is derived from the filename (hyphens become spaces, e.g. `tokyo-night-moon.toml` → "tokyo night moon").
 
 Example theme file (`~/.config/mdr/themes/tokyo-night-moon.toml`):
