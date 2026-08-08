@@ -48,7 +48,7 @@ fn draw_tab_bar(f: &mut Frame, state: &AppState, area: Rect) {
             spans.push(Span::styled(
                 format!(" {} ", name),
                 Style::default()
-                    .fg(theme.text_bright)
+                    .fg(theme.selection)
                     .bg(theme.cursor_bg)
                     .add_modifier(Modifier::BOLD),
             ));
@@ -235,7 +235,7 @@ fn draw_reader(f: &mut Frame, state: &mut AppState) {
         };
 
         let status = Line::from(vec![
-            Span::styled("/", Style::default().fg(theme.accent)),
+            Span::styled("/", Style::default().fg(theme.key)),
             Span::styled(
                 tab.search_query.clone(),
                 Style::default().fg(theme.text_bright),
@@ -265,7 +265,7 @@ fn draw_reader(f: &mut Frame, state: &mut AppState) {
             Span::styled(" │ ", Style::default().fg(theme.border)),
             Span::styled(
                 "?:help",
-                Style::default().fg(theme.text_muted),
+                Style::default().fg(theme.key),
             ),
         ];
 
@@ -273,7 +273,7 @@ fn draw_reader(f: &mut Frame, state: &mut AppState) {
             status_spans.push(Span::styled(" │ ", Style::default().fg(theme.border)));
             status_spans.push(Span::styled(
                 "[tasks]",
-                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+                Style::default().fg(theme.labels.features).add_modifier(Modifier::BOLD),
             ));
         }
 
@@ -289,7 +289,7 @@ fn draw_reader(f: &mut Frame, state: &mut AppState) {
             status_spans.push(Span::styled(" │ ", Style::default().fg(theme.border)));
             status_spans.push(Span::styled(
                 "[updated]",
-                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+                Style::default().fg(theme.labels.features).add_modifier(Modifier::BOLD),
             ));
         }
 
@@ -310,8 +310,8 @@ fn draw_reader(f: &mut Frame, state: &mut AppState) {
 fn highlight_search<'a>(line: Line<'a>, query: &str, theme: crate::theme::Theme) -> Line<'a> {
     let query_lower = query.to_lowercase();
     let highlight_style = Style::default()
-        .fg(theme.text_bright)
-        .bg(theme.accent)
+        .fg(theme.background_dark)
+        .bg(theme.selection)
         .add_modifier(Modifier::BOLD);
 
     let mut new_spans: Vec<Span<'a>> = Vec::new();
@@ -666,15 +666,22 @@ fn draw_theme_picker(f: &mut Frame, state: &AppState) {
     ])
     .split(inner);
 
+    let visible_rows = chunks[0].height as usize;
+    let first_visible = state
+        .theme_index
+        .saturating_add(1)
+        .saturating_sub(visible_rows);
     let lines: Vec<Line> = state.themes
         .iter()
         .enumerate()
+        .skip(first_visible)
+        .take(visible_rows)
         .map(|(i, (name, _))| {
             let is_selected = i == state.theme_index;
             let prefix = if is_selected { " > " } else { "   " };
             let style = if is_selected {
                 Style::default()
-                    .fg(theme.text_bright)
+                    .fg(theme.selection)
                     .bg(theme.cursor_bg)
                     .add_modifier(Modifier::BOLD)
             } else {
@@ -699,7 +706,7 @@ fn draw_theme_picker(f: &mut Frame, state: &AppState) {
 
     let hint = Line::from(Span::styled(
         " j/k:select  enter:ok  esc:cancel",
-        Style::default().fg(theme.text_muted),
+        Style::default().fg(theme.key),
     ));
     f.render_widget(Paragraph::new(hint), chunks[1]);
 }
@@ -743,7 +750,7 @@ fn draw_filter_picker(f: &mut Frame, state: &AppState) {
         ))
     } else {
         Line::from(vec![
-            Span::styled(" > ", Style::default().fg(theme.accent)),
+            Span::styled(" > ", Style::default().fg(theme.key)),
             Span::styled(filter.clone(), Style::default().fg(theme.text_bright)),
         ])
     };
@@ -792,7 +799,7 @@ fn draw_filter_picker(f: &mut Frame, state: &AppState) {
 
     let hint = Line::from(Span::styled(
         " enter:ok  esc:cancel",
-        Style::default().fg(theme.text_muted),
+        Style::default().fg(theme.key),
     ));
     f.render_widget(Paragraph::new(hint), chunks[2]);
 }
@@ -853,13 +860,13 @@ fn draw_toc(f: &mut Frame, state: &AppState) {
             let indent = " ".repeat((*level as usize).saturating_sub(1) * 2);
             let prefix = if is_selected { " > " } else { "   " };
             let color = match level {
-                1 => theme.accent,
+                1 => theme.heading,
                 2 => theme.heading,
                 _ => theme.text_bright,
             };
             let style = if is_selected {
                 Style::default()
-                    .fg(color)
+                    .fg(theme.selection)
                     .bg(theme.cursor_bg)
                     .add_modifier(Modifier::BOLD)
             } else {
@@ -884,7 +891,7 @@ fn draw_toc(f: &mut Frame, state: &AppState) {
 
     let hint = Line::from(Span::styled(
         " j/k:select  enter:jump  esc/o:cancel",
-        Style::default().fg(theme.text_muted),
+        Style::default().fg(theme.key),
     ));
     f.render_widget(Paragraph::new(hint), chunks[1]);
 }
@@ -936,7 +943,7 @@ fn draw_bookmark_list(f: &mut Frame, state: &AppState) {
             let prefix = if is_selected { " > " } else { "   " };
             let style = if is_selected {
                 Style::default()
-                    .fg(theme.text_bright)
+                    .fg(theme.selection)
                     .bg(theme.cursor_bg)
                     .add_modifier(Modifier::BOLD)
             } else {
@@ -961,7 +968,7 @@ fn draw_bookmark_list(f: &mut Frame, state: &AppState) {
 
     let hint = Line::from(Span::styled(
         " j/k:select  enter:jump  esc/B:cancel",
-        Style::default().fg(theme.text_muted),
+        Style::default().fg(theme.key),
     ));
     f.render_widget(Paragraph::new(hint), chunks[1]);
 }
@@ -1028,7 +1035,7 @@ fn draw_help(f: &mut Frame, state: &AppState) {
         .iter()
         .map(|(key, desc)| {
             Line::from(vec![
-                Span::styled(format!(" {:14}", key), Style::default().fg(theme.accent)),
+                Span::styled(format!(" {:14}", key), Style::default().fg(theme.key)),
                 Span::styled(*desc, Style::default().fg(theme.text)),
             ])
         })
@@ -1038,7 +1045,7 @@ fn draw_help(f: &mut Frame, state: &AppState) {
 
     let hint = Line::from(Span::styled(
         " esc/enter/?:close",
-        Style::default().fg(theme.text_muted),
+        Style::default().fg(theme.key),
     ));
     f.render_widget(Paragraph::new(hint), chunks[1]);
 }
@@ -1047,12 +1054,88 @@ fn draw_help(f: &mut Frame, state: &AppState) {
 mod tests {
     use super::{draw, picker_rect};
     use crate::browser::BrowserEntry;
-    use crate::state::AppState;
+    use crate::state::{AppMode, AppState, Tab};
     use crate::theme::default_theme;
     use ratatui::backend::TestBackend;
+    use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;
     use ratatui::Terminal;
     use std::path::PathBuf;
+
+    fn find_text(buffer: &Buffer, needle: &str) -> Option<(u16, u16)> {
+        let chars: Vec<String> = needle.chars().map(|ch| ch.to_string()).collect();
+        for y in buffer.area.y..buffer.area.y + buffer.area.height {
+            for x in buffer.area.x..buffer.area.x + buffer.area.width {
+                if x + chars.len() as u16 > buffer.area.x + buffer.area.width {
+                    break;
+                }
+                if chars
+                    .iter()
+                    .enumerate()
+                    .all(|(offset, ch)| buffer[(x + offset as u16, y)].symbol() == ch)
+                {
+                    return Some((x, y));
+                }
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn reader_uses_selection_and_key_roles() {
+        let theme = default_theme();
+        let mut state = AppState::new_reader(
+            PathBuf::from("synthetic-one.md"),
+            "# Synthetic".into(),
+            0,
+            vec![("test".into(), theme)],
+            false,
+        );
+        state.tabs.push(Tab::new(
+            PathBuf::from("synthetic-two.md"),
+            "# Synthetic".into(),
+            theme,
+        ));
+        let mut terminal = Terminal::new(TestBackend::new(100, 32)).expect("test terminal");
+
+        terminal
+            .draw(|frame| draw(frame, &mut state))
+            .expect("draw reader");
+        let buffer = terminal.backend().buffer();
+        let (tab_x, tab_y) = find_text(buffer, "synthetic-one.md").expect("active tab");
+        assert_eq!(buffer[(tab_x, tab_y)].fg, theme.selection);
+
+        state.mode = AppMode::Help;
+        terminal
+            .draw(|frame| draw(frame, &mut state))
+            .expect("draw help");
+        let buffer = terminal.backend().buffer();
+        let (key_x, key_y) = find_text(buffer, "j / Down").expect("help key");
+        assert_eq!(buffer[(key_x, key_y)].fg, theme.key);
+    }
+
+    #[test]
+    fn theme_picker_scrolls_to_selected_theme() {
+        let theme = default_theme();
+        let themes = (0..16)
+            .map(|index| (format!("theme {index:02}"), theme))
+            .collect();
+        let mut state = AppState::new_reader(
+            PathBuf::from("synthetic.md"),
+            "# Synthetic".into(),
+            15,
+            themes,
+            false,
+        );
+        state.mode = AppMode::ThemePicker { original_index: 15 };
+        let mut terminal = Terminal::new(TestBackend::new(60, 10)).expect("test terminal");
+
+        terminal
+            .draw(|frame| draw(frame, &mut state))
+            .expect("draw theme picker");
+
+        assert!(find_text(terminal.backend().buffer(), "theme 15").is_some());
+    }
 
     #[test]
     fn file_picker_uses_layered_theme_and_selection_marker() {

@@ -306,7 +306,7 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
 
                 let style = if let Some(level) = in_heading {
                     let color = match level {
-                        1 => theme.accent,
+                        1 => theme.heading,
                         2 => theme.heading,
                         _ => theme.text_bright,
                     };
@@ -445,9 +445,14 @@ pub fn parse_markdown(source: &str, theme: Theme, width: u16) -> Vec<StyledLine<
                 task_source_line = Some(source[..range.start].bytes().filter(|&b| b == b'\n').count());
                 let marker = if checked { "  [x] " } else { "  [ ] " };
                 list_indent = marker.width();
+                let marker_color = if checked {
+                    theme.labels.features
+                } else {
+                    theme.key
+                };
                 current_spans.push(Span::styled(
                     marker.to_string(),
-                    Style::default().fg(theme.accent),
+                    Style::default().fg(marker_color),
                 ));
                 list_item_first_para = false;
             }
@@ -512,7 +517,7 @@ fn emit_table_row(
         };
 
         let style = if is_header {
-            Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)
+            Style::default().fg(theme.heading).add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(theme.text)
         };
@@ -599,4 +604,30 @@ fn flush_line_heading(
         link_url: link_url.take(),
         is_list_item_start: false,
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_markdown;
+    use crate::theme::default_theme;
+
+    #[test]
+    fn task_markers_use_key_and_success_roles() {
+        let theme = default_theme();
+        let lines = parse_markdown("- [ ] pending\n- [x] complete", theme, 80);
+
+        let pending = lines
+            .iter()
+            .flat_map(|line| &line.line.spans)
+            .find(|span| span.content.contains("[ ]"))
+            .expect("pending marker");
+        let complete = lines
+            .iter()
+            .flat_map(|line| &line.line.spans)
+            .find(|span| span.content.contains("[x]"))
+            .expect("complete marker");
+
+        assert_eq!(pending.style.fg, Some(theme.key));
+        assert_eq!(complete.style.fg, Some(theme.labels.features));
+    }
 }

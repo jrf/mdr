@@ -73,7 +73,13 @@ newest-first under “Most Recent.”
 
 ### Themes
 
-synthwave, monochrome, ocean, sunset, matrix, tokyo night moon
+The built-in themes are:
+
+- Tokyo Night: night, storm, moon, and day
+- Catppuccin: latte, frappe, macchiato, and mocha
+- classic, fire, matrix, monochrome, ocean, purple, sunset, and synthwave
+
+The Tokyo Night palettes come from [folke/tokyonight.nvim](https://github.com/folke/tokyonight.nvim/tree/main/lua/tokyonight/colors), and the Catppuccin palettes come from [catppuccin/palette](https://github.com/catppuccin/palette).
 
 ### Configuration
 
@@ -86,7 +92,7 @@ scrollbar = true
 
 The in-app theme picker changes the theme for the current session only. Set `theme` here to choose the startup theme.
 
-Themes live in `~/.config/mdr/themes/` as individual `.toml` files. The theme name is derived from the filename (hyphens become spaces, e.g. `tokyo-night-moon.toml` → "tokyo night moon").
+Add custom themes to `~/.config/mdr/themes/` as individual `.toml` files. The theme name is derived from the filename (hyphens become spaces, e.g. `tokyo-night-moon.toml` → "tokyo night moon"). A custom theme with the same name overrides the built-in theme.
 
 Example theme file (`~/.config/mdr/themes/tokyo-night-moon.toml`):
 
@@ -107,6 +113,7 @@ blue = "#82aaff"
 blue1 = "#65bcff"
 blue7 = "#394b70"
 magenta = "#c099ff"
+cyan = "#86e1fc"
 
 [ui]
 background = "bg"
@@ -114,6 +121,8 @@ background_dark = "bg_dark"
 background_deep = "bg_dark1"
 border = "fg_gutter"
 accent = "magenta"
+selection = "blue"
+key = "cyan"
 text = "fg"
 text_bright = "fg_bright"
 text_dim = "comment"
@@ -137,7 +146,7 @@ docs = "blue"
 chore = "comment"
 ```
 
-- Each theme file has a `[colors]` palette (hex `#rrggbb`), a `[ui]` section mapping general and picker roles to palette names, and a `[labels]` section for category colors
+- Each theme file has a `[colors]` palette (hex `#rrggbb`), a `[ui]` section mapping general and picker roles to palette names, and a `[labels]` section for category colors. Core roles include `accent` for branded chrome, `selection` for active rows and search matches, `key` for shortcuts and prompts, and `heading` for document structure.
 - All fields are optional — missing fields fall back to a hardcoded default
 - Add new themes by dropping a `.toml` file in the themes directory
 - Requires a truecolor-capable terminal

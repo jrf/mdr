@@ -83,6 +83,7 @@ fn main() -> io::Result<()> {
     let initial_theme = cfg.theme.as_deref()
         .and_then(|name| theme::find_theme(&themes, name))
         .map(|(idx, _)| idx)
+        .or_else(|| theme::find_theme(&themes, "tokyo night moon").map(|(idx, _)| idx))
         .unwrap_or(0);
 
     let mut state = if stdin_is_pipe {

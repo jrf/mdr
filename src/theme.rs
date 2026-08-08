@@ -9,6 +9,8 @@ pub struct Theme {
     pub background_deep: Color,
     pub border: Color,
     pub accent: Color,
+    pub selection: Color,
+    pub key: Color,
     pub text: Color,
     pub text_bright: Color,
     pub text_dim: Color,
@@ -46,6 +48,8 @@ pub fn default_theme() -> Theme {
         background_deep: Color::Rgb(25, 27, 41),  // #191b29
         border: Color::Rgb(59, 66, 97),       // #3b4261
         accent: Color::Rgb(192, 153, 255),     // #c099ff
+        selection: Color::Rgb(130, 170, 255),  // #82aaff
+        key: Color::Rgb(134, 225, 252),        // #86e1fc
         text: Color::Rgb(200, 211, 245),       // #c8d3f5
         text_bright: Color::Rgb(213, 223, 245),// #d5dff5
         text_dim: Color::Rgb(99, 109, 166),    // #636da6
@@ -96,6 +100,8 @@ pub struct UiConfig {
     pub background_deep: Option<String>,
     pub border: Option<String>,
     pub accent: Option<String>,
+    pub selection: Option<String>,
+    pub key: Option<String>,
     pub text: Option<String>,
     pub text_bright: Option<String>,
     pub text_dim: Option<String>,
@@ -173,6 +179,8 @@ impl ThemeConfig {
         let border = r(ui.map(|u| &u.border), base.border);
         let accent = r(ui.map(|u| &u.accent), base.accent);
         let heading = r(ui.map(|u| &u.heading), base.heading);
+        let selection = r(ui.map(|u| &u.selection), conventional("blue", heading));
+        let key = r(ui.map(|u| &u.key), conventional("cyan", accent));
 
         Theme {
             background,
@@ -180,6 +188,8 @@ impl ThemeConfig {
             background_deep,
             border,
             accent,
+            selection,
+            key,
             text: r(ui.map(|u| &u.text), base.text),
             text_bright: r(ui.map(|u| &u.text_bright), base.text_bright),
             text_dim: r(ui.map(|u| &u.text_dim), base.text_dim),
@@ -238,16 +248,20 @@ mod tests {
     use ratatui::style::Color;
 
     #[test]
-    fn resolves_configurable_picker_roles() {
+    fn resolves_configurable_semantic_roles() {
         let config: ThemeConfig = toml::from_str(
             r##"
             [colors]
             panel = "#010203"
             accent = "#040506"
+            selection = "#070809"
+            key = "#0a0b0c"
 
             [ui]
             background = "panel"
             picker_accent = "accent"
+            selection = "selection"
+            key = "key"
             "##,
         )
         .expect("theme config");
@@ -256,5 +270,21 @@ mod tests {
 
         assert_eq!(theme.background, Color::Rgb(1, 2, 3));
         assert_eq!(theme.picker_accent, Color::Rgb(4, 5, 6));
+        assert_eq!(theme.selection, Color::Rgb(7, 8, 9));
+        assert_eq!(theme.key, Color::Rgb(10, 11, 12));
+    }
+
+    #[test]
+    fn tokyo_night_moon_uses_distinct_core_roles() {
+        let config: ThemeConfig =
+            toml::from_str(include_str!("../themes/tokyo-night-moon.toml")).unwrap();
+        let theme = config.resolve(&default_theme());
+
+        assert_eq!(theme.accent, Color::Rgb(192, 153, 255));
+        assert_eq!(theme.selection, Color::Rgb(130, 170, 255));
+        assert_eq!(theme.key, Color::Rgb(134, 225, 252));
+        assert_eq!(theme.labels.features, Color::Rgb(195, 232, 141));
+        assert_ne!(theme.accent, theme.selection);
+        assert_ne!(theme.selection, theme.key);
     }
 }
