@@ -534,6 +534,29 @@ fn picker_recent_heading_line(width: usize, theme: crate::theme::Theme) -> Line<
     Line::from(spans)
 }
 
+fn truncate_left(value: &str, max_width: usize) -> String {
+    if value.width() <= max_width {
+        return value.to_string();
+    }
+    if max_width == 0 {
+        return String::new();
+    }
+
+    let suffix_width = max_width.saturating_sub(1);
+    let mut suffix = Vec::new();
+    let mut used = 0;
+    for character in value.chars().rev() {
+        let width = character.to_string().width();
+        if used + width > suffix_width {
+            break;
+        }
+        suffix.push(character);
+        used += width;
+    }
+    suffix.reverse();
+    format!("…{}", suffix.into_iter().collect::<String>())
+}
+
 fn picker_entry_line(
     entry: &crate::browser::BrowserEntry,
     browser: &crate::browser::BrowserState,
@@ -598,7 +621,30 @@ fn picker_entry_line(
         spans.push(Span::styled(character.to_string(), style));
     }
 
-    let used: usize = spans.iter().map(|span| span.content.width()).sum();
+    let mut used: usize = spans.iter().map(|span| span.content.width()).sum();
+    let recent_parent = if entry.is_recent && browser.filter.is_empty() {
+        entry.path.parent()
+    } else {
+        None
+    };
+    if let Some(parent) = recent_parent {
+        let parent = shorten_path(&parent.to_string_lossy());
+        let available = width.saturating_sub(used + 2);
+        if available >= 3 {
+            let parent = truncate_left(&parent, available);
+            let parent_width = parent.width();
+            let gap = width.saturating_sub(used + parent_width);
+            spans.push(Span::styled(
+                " ".repeat(gap),
+                Style::default().bg(background),
+            ));
+            spans.push(Span::styled(
+                parent,
+                Style::default().fg(theme.text_dim).bg(background),
+            ));
+            used = width;
+        }
+    }
     if used < width {
         spans.push(Span::styled(
             " ".repeat(width - used),
@@ -1172,7 +1218,7 @@ mod tests {
     }
 
     #[test]
-    fn file_picker_labels_recent_documents() {
+    fn file_picker_labels_recent_documents_with_parent_directory() {
         let theme = default_theme();
         let mut state = AppState::new_picker(
             PathBuf::from("synthetic"),
@@ -1182,7 +1228,7 @@ mod tests {
         );
         state.browser.entries = vec![BrowserEntry {
             name: "recent.md".into(),
-            path: PathBuf::from("recent.md"),
+            path: PathBuf::from("/synthetic/project/recent.md"),
             is_dir: false,
             is_recent: true,
         }];
@@ -1204,5 +1250,8 @@ mod tests {
             .collect();
 
         assert!(rendered.contains("Most Recent"));
+        assert!(rendered.contains("/synthetic/project"));
+        let (path_x, path_y) = find_text(buffer, "/synthetic/project").expect("recent parent");
+        assert_eq!(buffer[(path_x, path_y)].fg, theme.text_dim);
     }
 }

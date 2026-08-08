@@ -39,7 +39,7 @@ cat file.md | mdr       # read from stdin
 
 The picker keeps up to 50 recently opened markdown files in
 `$XDG_CACHE_HOME/mdr/recent` (or `~/.cache/mdr/recent`) and shows valid entries
-newest-first under “Most Recent.”
+newest-first under “Most Recent,” with their parent directories shown for context.
 
 ### Keybindings
 
