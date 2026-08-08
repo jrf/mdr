@@ -691,9 +691,7 @@ fn draw_theme_picker(f: &mut Frame, state: &AppState) {
     let theme = state.theme;
     let area = f.area();
 
-    let height = state.themes.len() as u16 + 4;
-    let width = 38;
-    let popup = centered_rect(width, height, area);
+    let popup = picker_rect(area);
 
     f.render_widget(Clear, popup);
 
@@ -1181,6 +1179,35 @@ mod tests {
             .expect("draw theme picker");
 
         assert!(find_text(terminal.backend().buffer(), "theme 15").is_some());
+    }
+
+    #[test]
+    fn theme_picker_uses_centered_three_quarter_layout() {
+        let theme = default_theme();
+        let mut state = AppState::new_reader(
+            PathBuf::from("synthetic.md"),
+            "# Synthetic".into(),
+            0,
+            vec![("test".into(), theme)],
+            false,
+        );
+        state.mode = AppMode::ThemePicker { original_index: 0 };
+        let area = Rect::new(0, 0, 100, 40);
+        let popup = picker_rect(area);
+        let mut terminal =
+            Terminal::new(TestBackend::new(area.width, area.height)).expect("test terminal");
+
+        terminal
+            .draw(|frame| draw(frame, &mut state))
+            .expect("draw theme picker");
+        let buffer = terminal.backend().buffer();
+
+        assert_eq!(popup, Rect::new(12, 5, 75, 30));
+        assert_eq!(buffer[(popup.x, popup.y)].symbol(), "┌");
+        assert_eq!(
+            buffer[(popup.x + popup.width - 1, popup.y + popup.height - 1)].symbol(),
+            "┘"
+        );
     }
 
     #[test]
