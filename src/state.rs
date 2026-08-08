@@ -751,11 +751,13 @@ impl AppState {
     pub fn open_file(&mut self, path: PathBuf) -> io::Result<()> {
         // Check if already open
         if let Some(idx) = self.tabs.iter().position(|t| t.file_path.as_ref() == Some(&path)) {
+            crate::recent::record(&path);
             self.active_tab = idx;
             self.mode = AppMode::Reader;
             return Ok(());
         }
         let content = fs::read_to_string(&path)?;
+        crate::recent::record(&path);
         // Replace the placeholder tab (empty, no file) if it's the only one
         if self.tabs.len() == 1 && self.tabs[0].file_path.is_none() {
             self.tabs[0] = Tab::new(path, content, self.theme);

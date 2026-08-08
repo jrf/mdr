@@ -1,6 +1,7 @@
 mod browser;
 mod config;
 mod markdown;
+mod recent;
 mod state;
 mod theme;
 mod ui;
@@ -94,13 +95,16 @@ fn main() -> io::Result<()> {
             e
         })?;
         let content = fs::read_to_string(&file_path)?;
+        recent::record(&file_path);
         AppState::new_reader(file_path, content, initial_theme, themes, cfg.scrollbar)
     } else {
         let dir = env::current_dir()?;
-        let mut s = AppState::new_picker(dir, initial_theme, themes, cfg.scrollbar);
-        s.browser.preload_recursive();
-        s
+        AppState::new_picker(dir, initial_theme, themes, cfg.scrollbar)
     };
+    state.browser.set_recents(recent::load());
+    if matches!(&state.mode, AppMode::FilePicker) {
+        state.browser.preload_recursive();
+    }
 
     // File change flag (set by watcher, cleared by main loop)
     let file_dirty = Arc::new(AtomicBool::new(false));
@@ -191,8 +195,7 @@ fn main() -> io::Result<()> {
                                         }
                                     }
                                     KeyCode::Char('f') if !ctrl => {
-                                        state.browser.filter.clear();
-                                        state.browser.rebuild_filter();
+                                        state.browser.set_recents(recent::load());
                                         state.browser.preload_recursive();
                                         state.mode = AppMode::FilePicker;
                                     }

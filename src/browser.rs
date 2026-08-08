@@ -81,6 +81,7 @@ pub struct BrowserEntry {
     pub name: String,
     pub path: PathBuf,
     pub is_dir: bool,
+    pub is_recent: bool,
 }
 
 pub struct BrowserState {
@@ -90,6 +91,8 @@ pub struct BrowserState {
     pub scroll_offset: usize,
     pub filter: String,
     pub filtered_indices: Vec<usize>,
+    root_dir: PathBuf,
+    recents: Vec<PathBuf>,
     /// Cached recursive .md files from git root
     recursive_entries: Vec<BrowserEntry>,
     recursive_loaded: bool,
@@ -100,12 +103,14 @@ pub struct BrowserState {
 impl BrowserState {
     pub fn new(dir: PathBuf) -> Self {
         let mut state = Self {
-            current_dir: dir,
+            current_dir: dir.clone(),
             entries: Vec::new(),
             selected: 0,
             scroll_offset: 0,
             filter: String::new(),
             filtered_indices: Vec::new(),
+            root_dir: dir,
+            recents: Vec::new(),
             recursive_entries: Vec::new(),
 
             recursive_loaded: false,
@@ -113,6 +118,14 @@ impl BrowserState {
         };
         state.load_dir();
         state
+    }
+
+    /// Supply recently opened documents, which are listed first in the
+    /// starting directory when no filter is active.
+    pub fn set_recents(&mut self, recents: Vec<PathBuf>) {
+        self.recents = recents;
+        self.root_dir = self.current_dir.clone();
+        self.load_dir();
     }
 
     pub fn load_dir(&mut self) {
@@ -124,9 +137,10 @@ impl BrowserState {
         // Add parent directory entry
         if let Some(parent) = self.current_dir.parent() {
             self.entries.push(BrowserEntry {
-                name: "..".to_string(),
+                name: "../".to_string(),
                 path: parent.to_path_buf(),
                 is_dir: true,
+                is_recent: false,
             });
         }
 
@@ -154,12 +168,14 @@ impl BrowserState {
                     name: format!("{}/", name),
                     path: entry.path(),
                     is_dir: true,
+                    is_recent: false,
                 });
             } else if name.ends_with(".md") || name.ends_with(".markdown") {
                 files.push(BrowserEntry {
                     name,
                     path: entry.path(),
                     is_dir: false,
+                    is_recent: false,
                 });
             }
         }
@@ -169,9 +185,46 @@ impl BrowserState {
 
         self.entries.extend(dirs);
         self.entries.extend(files);
+        self.prepend_recents();
         self.rebuild_filter();
         self.selected = 0;
         self.scroll_offset = 0;
+    }
+
+    fn prepend_recents(&mut self) {
+        if self.current_dir != self.root_dir || self.recents.is_empty() {
+            return;
+        }
+        let insert_at = usize::from(
+            self.entries
+                .first()
+                .is_some_and(|entry| entry.name == "../"),
+        );
+        let mut recent_entries = Vec::new();
+        for path in &self.recents {
+            if !path.is_file() || !is_markdown(path) {
+                continue;
+            }
+            if let Some(position) = self.entries.iter().position(|entry| &entry.path == path) {
+                let mut entry = self.entries.remove(position);
+                entry.is_recent = true;
+                recent_entries.push(entry);
+                continue;
+            }
+            let file_name = path
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path.to_string_lossy().into_owned());
+            recent_entries.push(BrowserEntry {
+                name: file_name,
+                path: path.clone(),
+                is_dir: false,
+                is_recent: true,
+            });
+        }
+        for (offset, entry) in recent_entries.into_iter().enumerate() {
+            self.entries.insert(insert_at + offset, entry);
+        }
     }
 
     /// Whether recursive file collection is still in progress.
@@ -185,6 +238,7 @@ impl BrowserState {
             return;
         }
         let dir = self.current_dir.clone();
+        let recents = self.recents.clone();
         let (tx, rx) = mpsc::channel();
         self.recursive_rx = Some(rx);
         thread::spawn(move || {
@@ -193,6 +247,7 @@ impl BrowserState {
                 .into_iter()
                 .map(|(rel, path)| BrowserEntry {
                     name: rel,
+                    is_recent: recents.contains(&path),
                     path,
                     is_dir: false,
                 })
@@ -258,6 +313,38 @@ impl BrowserState {
             .collect()
     }
 
+    pub fn recent_heading_index(&self) -> Option<usize> {
+        if !self.filter.is_empty() {
+            return None;
+        }
+        self.filtered_entries()
+            .iter()
+            .position(|(_, entry)| entry.is_recent)
+    }
+
+    pub fn match_indices(&self, name: &str) -> Vec<usize> {
+        if self.filter.is_empty() {
+            return Vec::new();
+        }
+
+        let pattern = Pattern::parse(
+            &self.filter,
+            CaseMatching::Ignore,
+            Normalization::Smart,
+        );
+        let mut matcher = Matcher::new(Config::DEFAULT.match_paths());
+        let mut buffer = Vec::new();
+        let haystack = Utf32Str::new(name, &mut buffer);
+        let mut indices = Vec::new();
+        let _ = pattern.indices(haystack, &mut matcher, &mut indices);
+        indices.sort_unstable();
+        indices.dedup();
+        indices
+            .into_iter()
+            .filter_map(|index| usize::try_from(index).ok())
+            .collect()
+    }
+
     pub fn select_down(&mut self) {
         if !self.filtered_indices.is_empty() {
             self.selected = (self.selected + 1).min(self.filtered_indices.len() - 1);
@@ -319,10 +406,58 @@ impl BrowserState {
     }
 
     pub fn adjust_scroll(&mut self, visible_height: usize) {
+        let visible_height = visible_height.max(1);
         if self.selected < self.scroll_offset {
             self.scroll_offset = self.selected;
-        } else if self.selected >= self.scroll_offset + visible_height {
-            self.scroll_offset = self.selected - visible_height + 1;
+            return;
         }
+
+        let heading_index = self.recent_heading_index();
+        while self.scroll_offset < self.selected {
+            let entries = self.selected - self.scroll_offset + 1;
+            let includes_heading = heading_index
+                .is_some_and(|index| index >= self.scroll_offset && index <= self.selected);
+            if entries + usize::from(includes_heading) <= visible_height {
+                break;
+            }
+            self.scroll_offset += 1;
+        }
+    }
+}
+
+fn is_markdown(path: &Path) -> bool {
+    path.extension().is_some_and(|extension| {
+        extension.eq_ignore_ascii_case("md") || extension.eq_ignore_ascii_case("markdown")
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BrowserEntry, BrowserState};
+    use std::path::PathBuf;
+
+    #[test]
+    fn fuzzy_match_indices_identify_highlighted_characters() {
+        let mut browser = BrowserState::new(PathBuf::from("synthetic"));
+        browser.filter = "mdr".to_string();
+
+        assert_eq!(browser.match_indices("markdown-reader.md"), vec![0, 4, 9]);
+    }
+
+    #[test]
+    fn recent_heading_starts_at_first_recent_entry() {
+        let mut browser = BrowserState::new(PathBuf::from("synthetic"));
+        browser.entries = vec![BrowserEntry {
+            name: "recent.md".to_string(),
+            path: PathBuf::from("/synthetic/recent.md"),
+            is_dir: false,
+            is_recent: true,
+        }];
+        browser.filtered_indices = vec![0];
+
+        assert_eq!(browser.recent_heading_index(), Some(0));
+
+        browser.filter = "recent".to_string();
+        assert_eq!(browser.recent_heading_index(), None);
     }
 }

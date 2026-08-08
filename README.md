@@ -9,7 +9,7 @@ A terminal markdown reader with live file watching.
 - Renders markdown with styled headings, bold, italic, code blocks, blockquotes, lists, task lists, horizontal rules, and `[[wikilinks]]`
 - Live reload — file changes are reflected instantly
 - Vim-style scrolling (`j`/`k`, `g`/`G`, `Ctrl-f`/`Ctrl-b`)
-- File picker overlay — press `f`, type to filter, enter to open
+- Layered, theme-driven file picker with recent files — press `f`, fuzzy-filter recursively, and press Enter to open
 - Search — `/` to search, `n`/`N` to cycle matches
 - Multiple color themes, cycled with `t`
 - External editor — press `e` to open in `$EDITOR`
@@ -36,6 +36,10 @@ mdr <file.md>           # open a file
 mdr                     # open file picker
 cat file.md | mdr       # read from stdin
 ```
+
+The picker keeps up to 50 recently opened markdown files in
+`$XDG_CACHE_HOME/mdr/recent` (or `~/.cache/mdr/recent`) and shows valid entries
+newest-first under “Most Recent.”
 
 ### Keybindings
 
@@ -87,6 +91,8 @@ Example theme file (`~/.config/mdr/themes/tokyo-night-moon.toml`):
 ```toml
 [colors]
 bg = "#222436"
+bg_dark = "#1e2030"
+bg_dark1 = "#191b29"
 bg_highlight = "#2f334d"
 fg = "#c8d3f5"
 fg_bright = "#d5dff5"
@@ -96,9 +102,14 @@ red = "#ff757f"
 yellow = "#ffc777"
 green = "#c3e88d"
 blue = "#82aaff"
+blue1 = "#65bcff"
+blue7 = "#394b70"
 magenta = "#c099ff"
 
 [ui]
+background = "bg"
+background_dark = "bg_dark"
+background_deep = "bg_dark1"
 border = "fg_gutter"
 accent = "magenta"
 text = "fg"
@@ -108,6 +119,12 @@ text_muted = "fg_gutter"
 heading = "blue"
 error = "red"
 cursor_bg = "bg_highlight"
+picker_border = "blue7"
+picker_accent = "blue"
+picker_directory = "blue1"
+picker_matched = "magenta"
+picker_loading = "cyan"
+picker_recent = "yellow"
 
 [labels]
 bugs = "red"
@@ -118,7 +135,7 @@ docs = "blue"
 chore = "comment"
 ```
 
-- Each theme file has a `[colors]` palette (hex `#rrggbb`), a `[ui]` section mapping roles to palette names, and a `[labels]` section for category colors
+- Each theme file has a `[colors]` palette (hex `#rrggbb`), a `[ui]` section mapping general and picker roles to palette names, and a `[labels]` section for category colors
 - All fields are optional — missing fields fall back to a hardcoded default
 - Add new themes by dropping a `.toml` file in the themes directory
 - Requires a truecolor-capable terminal

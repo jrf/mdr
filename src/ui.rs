@@ -1,5 +1,5 @@
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState};
 use ratatui::Frame;
@@ -28,71 +28,6 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
         AppMode::TableOfContents { .. } => draw_toc(f, state),
         AppMode::BookmarkList { .. } => draw_bookmark_list(f, state),
         AppMode::Help => draw_help(f, state),
-    }
-}
-
-fn render_entry_list(
-    entries: &[(&crate::browser::BrowserEntry, bool)],
-    theme: crate::theme::Theme,
-    empty_msg: &str,
-    scroll: usize,
-    visible_height: usize,
-    area: Rect,
-    f: &mut Frame,
-) {
-    let lines: Vec<Line> = entries
-        .iter()
-        .enumerate()
-        .skip(scroll)
-        .take(visible_height)
-        .map(|(_, (entry, is_selected))| {
-            let prefix = "   ";
-
-            let icon = if entry.name == ".." {
-                "^ "
-            } else if entry.is_dir {
-                "/ "
-            } else {
-                "  "
-            };
-
-            let style = if *is_selected {
-                Style::default()
-                    .fg(theme.text_bright)
-                    .bg(theme.cursor_bg)
-                    .add_modifier(Modifier::BOLD)
-            } else if entry.name == ".." {
-                Style::default().fg(theme.text_dim)
-            } else if entry.is_dir {
-                Style::default().fg(theme.accent)
-            } else {
-                Style::default().fg(theme.text)
-            };
-
-            let mut line = Line::from(vec![
-                Span::styled(prefix, style),
-                Span::styled(icon, style),
-                Span::styled(entry.name.as_str(), style),
-            ]);
-            if *is_selected {
-                let content_width: usize = line.spans.iter().map(|s| s.content.width()).sum();
-                let area_width = area.width as usize;
-                if content_width < area_width {
-                    line.spans.push(Span::styled(
-                        " ".repeat(area_width - content_width),
-                        Style::default().bg(theme.cursor_bg),
-                    ));
-                }
-            }
-            line
-        })
-        .collect();
-
-    if lines.is_empty() {
-        let empty = Line::from(Span::styled(empty_msg, Style::default().fg(theme.text_dim)));
-        f.render_widget(Paragraph::new(vec![empty]), area);
-    } else {
-        f.render_widget(Paragraph::new(lines), area);
     }
 }
 
@@ -424,22 +359,45 @@ fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
     Rect::new(x, y, width.min(area.width), height.min(area.height))
 }
 
+fn picker_rect(area: Rect) -> Rect {
+    let width = if area.width > 4 {
+        (area.width * 3 / 4).max(50).min(area.width - 4)
+    } else {
+        area.width.max(1)
+    };
+    let height = if area.height > 4 {
+        (area.height * 3 / 4).max(6).min(area.height - 2)
+    } else {
+        area.height.max(1)
+    };
+    centered_rect(width, height, area)
+}
+
 fn draw_file_picker(f: &mut Frame, state: &AppState) {
     let theme = state.theme;
     let area = f.area();
 
-    let height = area.height * 3 / 4;
-    let width = (area.width * 3 / 4).max(50).min(area.width.saturating_sub(4));
-    let popup = centered_rect(width, height, area);
+    let popup = picker_rect(area);
 
+    f.render_widget(Clear, area);
+    f.render_widget(
+        Block::default().style(Style::default().bg(theme.background_deep)),
+        area,
+    );
     f.render_widget(Clear, popup);
 
     let dir_display = shorten_path(&state.browser.current_dir.display().to_string());
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.accent))
+        .style(Style::default().fg(theme.text).bg(theme.background))
+        .border_style(Style::default().fg(theme.picker_border))
         .title(format!(" {} ", dir_display))
-        .title_style(Style::default().fg(theme.accent).add_modifier(Modifier::BOLD));
+        .title_style(
+            Style::default()
+                .fg(theme.picker_accent)
+                .bg(theme.background)
+                .add_modifier(Modifier::BOLD),
+        );
 
     let inner = block.inner(popup);
     f.render_widget(block, popup);
@@ -455,55 +413,232 @@ fn draw_file_picker(f: &mut Frame, state: &AppState) {
     let filter_line = if state.browser.filter.is_empty() {
         Line::from(Span::styled(
             " type to filter...",
-            Style::default().fg(theme.text_muted),
+            Style::default()
+                .fg(theme.text_dim)
+                .bg(theme.background_dark),
         ))
     } else {
         Line::from(vec![
-            Span::styled(" > ", Style::default().fg(theme.accent)),
+            Span::styled(
+                " > ",
+                Style::default()
+                    .fg(theme.picker_accent)
+                    .bg(theme.background_dark),
+            ),
             Span::styled(
                 state.browser.filter.clone(),
-                Style::default().fg(theme.text_bright),
+                Style::default()
+                    .fg(theme.text)
+                    .bg(theme.background_dark),
             ),
         ])
     };
-    f.render_widget(Paragraph::new(filter_line), chunks[0]);
+    f.render_widget(
+        Paragraph::new(filter_line).style(Style::default().bg(theme.background_dark)),
+        chunks[0],
+    );
 
     // File list
     let content_height = chunks[1].height as usize;
-    let selected = state.browser.selected;
-
-    let entries: Vec<_> = state.browser.filtered_entries()
-        .into_iter()
+    let entries = state.browser.filtered_entries();
+    let recent_heading_index = state.browser.recent_heading_index();
+    let mut lines = Vec::with_capacity(content_height);
+    for (index, (_, entry)) in entries
+        .iter()
         .enumerate()
-        .map(|(i, (_idx, entry))| (entry, i == selected))
-        .collect();
-
-    let empty_msg = if state.browser.filter.is_empty() {
-        "   No markdown files found"
-    } else {
-        "   No matches"
-    };
-
-    render_entry_list(
-        &entries,
-        theme,
-        empty_msg,
-        state.browser.scroll_offset,
-        content_height,
+        .skip(state.browser.scroll_offset)
+    {
+        if Some(index) == recent_heading_index && lines.len() + 1 < content_height {
+            lines.push(picker_recent_heading_line(
+                chunks[1].width as usize,
+                theme,
+            ));
+        }
+        if lines.len() >= content_height {
+            break;
+        }
+        lines.push(picker_entry_line(
+            entry,
+            &state.browser,
+            index == state.browser.selected,
+            chunks[1].width as usize,
+            theme,
+        ));
+        if lines.len() >= content_height {
+            break;
+        }
+    }
+    if lines.is_empty() {
+        let message = if state.browser.filter.is_empty() {
+            "   No markdown files found"
+        } else {
+            "   No matches"
+        };
+        lines.push(Line::from(Span::styled(
+            message,
+            Style::default()
+                .fg(theme.text_dim)
+                .bg(theme.background),
+        )));
+    }
+    f.render_widget(
+        Paragraph::new(lines).style(Style::default().bg(theme.background)),
         chunks[1],
-        f,
     );
 
-    let hint_text = if state.browser.recursive_loading() {
-        " enter:open  esc:close  (loading...)"
+    let status = if state.browser.recursive_loading() {
+        Some((
+            format!("scanning • {} shown", entries.len()),
+            theme.picker_loading,
+        ))
     } else {
-        " enter:open  esc:close"
+        let position = if entries.is_empty() {
+            0
+        } else {
+            state.browser.selected + 1
+        };
+        Some((format!("{position}/{}", entries.len()), theme.text_dim))
     };
-    let hint = Line::from(Span::styled(
-        hint_text,
-        Style::default().fg(theme.text_muted),
-    ));
-    f.render_widget(Paragraph::new(hint), chunks[2]);
+    f.render_widget(
+        Paragraph::new(picker_hint_line(
+            &[("enter", "open"), ("esc", "close")],
+            status,
+            theme,
+        ))
+        .style(Style::default().bg(theme.background_dark)),
+        chunks[2],
+    );
+}
+
+fn picker_recent_heading_line(width: usize, theme: crate::theme::Theme) -> Line<'static> {
+    let label = " Most Recent ";
+    let mut spans = vec![
+        Span::styled("  ", Style::default().bg(theme.background)),
+        Span::styled(
+            label,
+            Style::default()
+                .fg(theme.picker_recent)
+                .bg(theme.background)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ];
+    let used = 2 + label.chars().count();
+    if used < width {
+        spans.push(Span::styled(
+            "─".repeat(width - used),
+            Style::default()
+                .fg(theme.picker_border)
+                .bg(theme.background),
+        ));
+    }
+    Line::from(spans)
+}
+
+fn picker_entry_line(
+    entry: &crate::browser::BrowserEntry,
+    browser: &crate::browser::BrowserState,
+    selected: bool,
+    width: usize,
+    theme: crate::theme::Theme,
+) -> Line<'static> {
+    let background = if selected {
+        theme.cursor_bg
+    } else {
+        theme.background
+    };
+    let marker_style = Style::default().fg(theme.picker_accent).bg(background);
+    let icon = if entry.name == "../" {
+        "↑ "
+    } else if entry.is_dir {
+        "› "
+    } else {
+        "  "
+    };
+    let icon_color = if entry.name == "../" {
+        theme.text_dim
+    } else if entry.is_dir {
+        theme.picker_directory
+    } else if entry.is_recent {
+        theme.picker_recent
+    } else {
+        theme.text
+    };
+    let mut spans = vec![
+        Span::styled(if selected { "▌ " } else { "  " }, marker_style),
+        Span::styled(icon, Style::default().fg(icon_color).bg(background)),
+    ];
+
+    let matches = browser.match_indices(&entry.name);
+    let basename_start = if entry.is_dir {
+        0
+    } else {
+        entry
+            .name
+            .char_indices()
+            .rev()
+            .find(|(_, character)| *character == '/')
+            .map_or(0, |(index, _)| entry.name[..=index].chars().count())
+    };
+    for (index, character) in entry.name.chars().enumerate() {
+        let foreground = if matches.binary_search(&index).is_ok() {
+            theme.picker_matched
+        } else if index < basename_start || entry.name == "../" {
+            theme.text_dim
+        } else if entry.is_recent {
+            theme.picker_recent
+        } else if entry.is_dir {
+            theme.picker_directory
+        } else {
+            theme.text
+        };
+        let mut style = Style::default().fg(foreground).bg(background);
+        if matches.binary_search(&index).is_ok() || (selected && index >= basename_start) {
+            style = style.add_modifier(Modifier::BOLD);
+        }
+        spans.push(Span::styled(character.to_string(), style));
+    }
+
+    let used: usize = spans.iter().map(|span| span.content.width()).sum();
+    if used < width {
+        spans.push(Span::styled(
+            " ".repeat(width - used),
+            Style::default().bg(background),
+        ));
+    }
+    Line::from(spans)
+}
+
+fn picker_hint_line(
+    bindings: &[(&str, &str)],
+    status: Option<(String, Color)>,
+    theme: crate::theme::Theme,
+) -> Line<'static> {
+    let mut spans = vec![Span::styled(
+        " ",
+        Style::default().bg(theme.background_dark),
+    )];
+    for (key, action) in bindings {
+        spans.push(Span::styled(
+            format!(" {key} "),
+            Style::default()
+                .fg(theme.picker_accent)
+                .bg(theme.cursor_bg)
+                .add_modifier(Modifier::BOLD),
+        ));
+        spans.push(Span::styled(
+            format!(" {action}  "),
+            Style::default()
+                .fg(theme.text_dim)
+                .bg(theme.background_dark),
+        ));
+    }
+    if let Some((status, color)) = status {
+        spans.push(Span::styled(
+            status,
+            Style::default().fg(color).bg(theme.background_dark),
+        ));
+    }
+    Line::from(spans)
 }
 
 fn draw_theme_picker(f: &mut Frame, state: &AppState) {
@@ -906,4 +1041,85 @@ fn draw_help(f: &mut Frame, state: &AppState) {
         Style::default().fg(theme.text_muted),
     ));
     f.render_widget(Paragraph::new(hint), chunks[1]);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{draw, picker_rect};
+    use crate::browser::BrowserEntry;
+    use crate::state::AppState;
+    use crate::theme::default_theme;
+    use ratatui::backend::TestBackend;
+    use ratatui::layout::Rect;
+    use ratatui::Terminal;
+    use std::path::PathBuf;
+
+    #[test]
+    fn file_picker_uses_layered_theme_and_selection_marker() {
+        let theme = default_theme();
+        let mut state = AppState::new_picker(
+            PathBuf::from("synthetic"),
+            0,
+            vec![("test".into(), theme)],
+            false,
+        );
+        state.browser.entries = vec![BrowserEntry {
+            name: "notes.md".into(),
+            path: PathBuf::from("notes.md"),
+            is_dir: false,
+            is_recent: false,
+        }];
+        state.browser.filtered_indices = vec![0];
+        let area = Rect::new(0, 0, 80, 30);
+        let popup = picker_rect(area);
+        let mut terminal =
+            Terminal::new(TestBackend::new(area.width, area.height)).expect("test terminal");
+
+        terminal
+            .draw(|frame| draw(frame, &mut state))
+            .expect("draw picker");
+        let buffer = terminal.backend().buffer();
+
+        assert_eq!(buffer[(0, 0)].symbol(), " ");
+        assert_eq!(buffer[(0, 0)].bg, theme.background_deep);
+        assert_eq!(buffer[(popup.x, popup.y)].fg, theme.picker_border);
+        assert_eq!(buffer[(popup.x + 1, popup.y + 1)].bg, theme.background_dark);
+        assert_eq!(buffer[(popup.x + 1, popup.y + 2)].symbol(), "▌");
+        assert_eq!(buffer[(popup.x + 1, popup.y + 2)].bg, theme.cursor_bg);
+    }
+
+    #[test]
+    fn file_picker_labels_recent_documents() {
+        let theme = default_theme();
+        let mut state = AppState::new_picker(
+            PathBuf::from("synthetic"),
+            0,
+            vec![("test".into(), theme)],
+            false,
+        );
+        state.browser.entries = vec![BrowserEntry {
+            name: "recent.md".into(),
+            path: PathBuf::from("recent.md"),
+            is_dir: false,
+            is_recent: true,
+        }];
+        state.browser.filtered_indices = vec![0];
+        let area = Rect::new(0, 0, 80, 30);
+        let popup = picker_rect(area);
+        let mut terminal =
+            Terminal::new(TestBackend::new(area.width, area.height)).expect("test terminal");
+
+        terminal
+            .draw(|frame| draw(frame, &mut state))
+            .expect("draw picker");
+        let buffer = terminal.backend().buffer();
+        let rendered: String = (popup.y + 1..popup.y + popup.height - 1)
+            .flat_map(|y| {
+                (popup.x + 1..popup.x + popup.width - 1)
+                    .map(move |x| buffer[(x, y)].symbol().to_string())
+            })
+            .collect();
+
+        assert!(rendered.contains("Most Recent"));
+    }
 }

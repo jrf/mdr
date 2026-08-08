@@ -1,4 +1,6 @@
-default: install
+# List available recipes
+default:
+    @just --list
 
 # Build in debug mode
 build:
