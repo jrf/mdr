@@ -802,7 +802,7 @@ impl AppState {
         let mut entries = Vec::new();
         for (display_idx, &line_idx) in indices.iter().enumerate() {
             if let Some(sl) = tab.cached_lines.get(line_idx) {
-                if let (Some(level), Some(ref text)) = (sl.heading_level, &sl.heading_text) {
+                if let (Some(level), Some(text)) = (sl.heading_level, &sl.heading_text) {
                     entries.push((text.clone(), display_idx, level));
                 }
             }

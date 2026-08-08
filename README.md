@@ -71,28 +71,19 @@ newest-first under “Most Recent,” with their parent directories shown for co
 | `q` | Close tab / quit |
 | `Ctrl-c` | Quit |
 
-### Themes
-
-The built-in themes are:
-
-- Tokyo Night: night, storm, moon, and day
-- Catppuccin: latte, frappe, macchiato, and mocha
-- classic, fire, matrix, monochrome, ocean, purple, sunset, and synthwave
-
-The Tokyo Night palettes come from [folke/tokyonight.nvim](https://github.com/folke/tokyonight.nvim/tree/main/lua/tokyonight/colors), and the Catppuccin palettes come from [catppuccin/palette](https://github.com/catppuccin/palette).
-
 ### Configuration
 
 Settings are stored in `~/.config/mdr/config.toml`:
 
 ```toml
-theme = "tokyo night moon"
+theme = "~/.config/themes/tokyo-night-moon.toml"
+theme_catalog = "~/.config/themes/catalog.toml"
 scrollbar = true
 ```
 
 The in-app theme picker changes the theme for the current session only. Set `theme` here to choose the startup theme.
 
-Add shared custom themes to `~/.config/themes/` as individual `.toml` files. App-specific overrides can be placed in `~/.config/mdr/themes/`. The theme name is derived from the filename (hyphens become spaces, e.g. `tokyo-night-moon.toml` → "tokyo night moon"). A custom theme with the same name overrides the built-in theme, and an app-specific theme overrides the shared version.
+`theme` is loaded directly at startup. `theme_catalog` contains a `themes = [...]` array of explicit file paths used by the picker. MDR never scans a theme directory. Picker labels are derived from filenames (hyphens become spaces).
 
 Example theme file (`~/.config/mdr/themes/tokyo-night-moon.toml`):
 

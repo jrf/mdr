@@ -5,50 +5,12 @@ use std::path::{Path, PathBuf};
 
 use crate::theme::ThemeConfig;
 
-const EMBEDDED_THEMES: &[(&str, &str)] = &[
-    (
-        "catppuccin frappe",
-        include_str!("../themes/catppuccin-frappe.toml"),
-    ),
-    (
-        "catppuccin latte",
-        include_str!("../themes/catppuccin-latte.toml"),
-    ),
-    (
-        "catppuccin macchiato",
-        include_str!("../themes/catppuccin-macchiato.toml"),
-    ),
-    (
-        "catppuccin mocha",
-        include_str!("../themes/catppuccin-mocha.toml"),
-    ),
-    ("classic", include_str!("../themes/classic.toml")),
-    ("fire", include_str!("../themes/fire.toml")),
-    ("matrix", include_str!("../themes/matrix.toml")),
-    ("monochrome", include_str!("../themes/monochrome.toml")),
-    ("ocean", include_str!("../themes/ocean.toml")),
-    ("purple", include_str!("../themes/purple.toml")),
-    ("sunset", include_str!("../themes/sunset.toml")),
-    ("synthwave", include_str!("../themes/synthwave.toml")),
-    ("tokyo night", include_str!("../themes/tokyo-night.toml")),
-    (
-        "tokyo night day",
-        include_str!("../themes/tokyo-night-day.toml"),
-    ),
-    (
-        "tokyo night moon",
-        include_str!("../themes/tokyo-night-moon.toml"),
-    ),
-    (
-        "tokyo night storm",
-        include_str!("../themes/tokyo-night-storm.toml"),
-    ),
-];
-
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct Config {
     #[serde(default)]
     pub theme: Option<String>,
+    #[serde(default)]
+    pub theme_catalog: Option<String>,
     #[serde(default = "default_scrollbar")]
     pub scrollbar: bool,
 }
@@ -67,14 +29,6 @@ fn config_dir() -> Option<PathBuf> {
 
 fn config_path() -> Option<PathBuf> {
     config_dir().map(|d| d.join("config.toml"))
-}
-
-fn themes_dir() -> Option<PathBuf> {
-    config_dir().map(|d| d.join("themes"))
-}
-
-fn shared_themes_dir() -> Option<PathBuf> {
-    config_root().map(|d| d.join("themes"))
 }
 
 pub fn load_config() -> Config {
@@ -103,84 +57,124 @@ pub fn load_config() -> Config {
     })
 }
 
-fn embedded_theme_configs() -> BTreeMap<String, ThemeConfig> {
-    EMBEDDED_THEMES
-        .iter()
-        .map(|(name, contents)| {
-            let config = toml::from_str(contents).expect("embedded theme must be valid TOML");
-            ((*name).to_string(), config)
-        })
-        .collect()
-}
+/// Load the selected theme path and the explicit picker catalog.
+pub fn load_theme_configs(config: &Config) -> BTreeMap<String, ThemeConfig> {
+    let home = dirs::home_dir().unwrap_or_default();
+    let mut themes = BTreeMap::new();
 
-/// Load built-ins, shared themes, then app-specific theme overrides.
-pub fn load_theme_configs() -> BTreeMap<String, ThemeConfig> {
-    let mut themes = embedded_theme_configs();
-
-    if let Some(dir) = shared_themes_dir() {
-        overlay_theme_dir(&mut themes, &dir);
+    if let Some(catalog_path) = config.theme_catalog.as_deref() {
+        for path in load_catalog_paths(&expand_home(&home, catalog_path), &home) {
+            load_theme_config(&mut themes, &path);
+        }
     }
-    if let Some(dir) = themes_dir() {
-        overlay_theme_dir(&mut themes, &dir);
+    if let Some(theme_path) = config.theme.as_deref() {
+        load_theme_config(&mut themes, &expand_home(&home, theme_path));
     }
 
     themes
 }
 
-fn overlay_theme_dir(themes: &mut BTreeMap<String, ThemeConfig>, dir: &Path) {
-    let entries = match fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return,
-    };
+pub fn configured_theme_name(config: &Config) -> Option<String> {
+    let home = dirs::home_dir().unwrap_or_default();
+    config
+        .theme
+        .as_deref()
+        .map(|path| theme_name(&expand_home(&home, path)))
+}
 
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("toml") {
-            continue;
-        }
-        let name = match path.file_stem().and_then(|s| s.to_str()) {
-            Some(n) => n.replace('-', " "),
-            None => continue,
-        };
-        let contents = match fs::read_to_string(&path) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-        if let Ok(cfg) = toml::from_str::<ThemeConfig>(&contents) {
-            themes.insert(name, cfg);
+fn load_catalog_paths(catalog_path: &Path, home: &Path) -> Vec<PathBuf> {
+    let Ok(contents) = fs::read_to_string(catalog_path) else {
+        return Vec::new();
+    };
+    let Ok(catalog) = contents.parse::<toml::Value>() else {
+        return Vec::new();
+    };
+    catalog
+        .get("themes")
+        .and_then(toml::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(toml::Value::as_str)
+        .map(|path| expand_home(home, path))
+        .collect()
+}
+
+fn load_theme_config(themes: &mut BTreeMap<String, ThemeConfig>, path: &Path) {
+    if let Ok(contents) = fs::read_to_string(path) {
+        if let Ok(config) = toml::from_str::<ThemeConfig>(&contents) {
+            themes.insert(theme_name(path), config);
         }
     }
 }
 
+fn expand_home(home: &Path, configured_path: &str) -> PathBuf {
+    configured_path
+        .strip_prefix("~/")
+        .map(|rest| home.join(rest))
+        .unwrap_or_else(|| PathBuf::from(configured_path))
+}
+
+fn theme_name(path: &Path) -> String {
+    path.file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("theme")
+        .replace('-', " ")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::embedded_theme_configs;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    use super::{load_theme_configs, Config};
 
     #[test]
-    fn embeds_every_built_in_theme() {
-        let themes = embedded_theme_configs();
-        let expected = [
-            "catppuccin frappe",
-            "catppuccin latte",
-            "catppuccin macchiato",
-            "catppuccin mocha",
-            "classic",
-            "fire",
-            "matrix",
-            "monochrome",
-            "ocean",
-            "purple",
-            "sunset",
-            "synthwave",
-            "tokyo night",
-            "tokyo night day",
-            "tokyo night moon",
-            "tokyo night storm",
-        ];
+    fn catalog_loads_only_explicit_theme_paths() {
+        let root = test_root();
+        let themes_dir = root.join("themes");
+        std::fs::create_dir_all(&themes_dir).unwrap();
+        std::fs::write(
+            themes_dir.join("synthetic-theme.toml"),
+            "[colors]\naccent = \"#112233\"\n[ui]\naccent = \"accent\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            themes_dir.join("unlisted.toml"),
+            "[colors]\naccent = \"#abcdef\"\n[ui]\naccent = \"accent\"\n",
+        )
+        .unwrap();
+        let catalog = root.join("catalog.toml");
+        std::fs::write(
+            &catalog,
+            format!(
+                "themes = [\"{}\"]\n",
+                themes_dir.join("synthetic-theme.toml").display()
+            ),
+        )
+        .unwrap();
 
-        assert_eq!(themes.len(), expected.len());
-        for name in expected {
-            assert!(themes.contains_key(name), "missing embedded theme: {name}");
-        }
+        let config = Config {
+            theme: Some(
+                themes_dir
+                    .join("synthetic-theme.toml")
+                    .display()
+                    .to_string(),
+            ),
+            theme_catalog: Some(catalog.display().to_string()),
+            scrollbar: true,
+        };
+        let themes = load_theme_configs(&config);
+        assert_eq!(themes.len(), 1);
+        assert_eq!(themes["synthetic theme"].colors["accent"], "#112233");
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    fn test_root() -> std::path::PathBuf {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        std::env::temp_dir().join(format!(
+            "mdr-theme-test-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ))
     }
 }

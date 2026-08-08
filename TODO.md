@@ -37,7 +37,7 @@
 - [x] Syntax highlighting in fenced code blocks via syntect #feature
 - [x] Configurable themes — per-file TOML with named color palettes #feature
 - [x] Category label colors in theme config #feature
-- [x] Themes loaded from `~/.config/mdr/themes/*.toml` #feature
+- [x] Themes loaded from explicit config and catalog paths #feature
 - [x] Replaced hand-rolled config parser with serde + toml #refactor
 - [x] Truecolor (24-bit RGB) theme support #improvement
 - [x] Multiple file tabs — `Tab`/`Shift-Tab` to switch, `q` to close #feature
@@ -55,7 +55,7 @@
 - [x] Scrollbar widget #feature
 - [x] Auto-refresh file picker on directory changes #improvement
 - [x] Task navigation with `Ctrl-n`/`Ctrl-p` #feature
-- [x] Persist selected theme to config #feature
+- [x] Session-only theme picker with config-controlled startup theme #feature
 - [x] File watcher with `[updated]` indicator #feature
 - [x] Table rendering #feature
 - [x] Strikethrough rendering #feature

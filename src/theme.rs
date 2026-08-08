@@ -43,36 +43,36 @@ pub struct CategoryLabels {
 /// Fallback theme (tokyo night moon in RGB) used when config has no themes.
 pub fn default_theme() -> Theme {
     Theme {
-        background: Color::Rgb(34, 36, 54),       // #222436
-        background_dark: Color::Rgb(30, 32, 48),  // #1e2030
-        background_deep: Color::Rgb(25, 27, 41),  // #191b29
-        border: Color::Rgb(59, 66, 97),       // #3b4261
-        accent: Color::Rgb(192, 153, 255),     // #c099ff
-        selection: Color::Rgb(130, 170, 255),  // #82aaff
-        key: Color::Rgb(134, 225, 252),        // #86e1fc
-        text: Color::Rgb(200, 211, 245),       // #c8d3f5
-        text_bright: Color::Rgb(213, 223, 245),// #d5dff5
-        text_dim: Color::Rgb(99, 109, 166),    // #636da6
-        text_muted: Color::Rgb(59, 66, 97),    // #3b4261
-        heading: Color::Rgb(130, 170, 255),    // #82aaff
-        error: Color::Rgb(255, 117, 127),      // #ff757f
-        cursor_bg: Color::Rgb(47, 51, 77),     // #2f334d
-        picker_border: Color::Rgb(57, 75, 112),    // #394b70
-        picker_accent: Color::Rgb(130, 170, 255),  // #82aaff
+        background: Color::Rgb(34, 36, 54),          // #222436
+        background_dark: Color::Rgb(30, 32, 48),     // #1e2030
+        background_deep: Color::Rgb(25, 27, 41),     // #191b29
+        border: Color::Rgb(59, 66, 97),              // #3b4261
+        accent: Color::Rgb(192, 153, 255),           // #c099ff
+        selection: Color::Rgb(130, 170, 255),        // #82aaff
+        key: Color::Rgb(134, 225, 252),              // #86e1fc
+        text: Color::Rgb(200, 211, 245),             // #c8d3f5
+        text_bright: Color::Rgb(213, 223, 245),      // #d5dff5
+        text_dim: Color::Rgb(99, 109, 166),          // #636da6
+        text_muted: Color::Rgb(59, 66, 97),          // #3b4261
+        heading: Color::Rgb(130, 170, 255),          // #82aaff
+        error: Color::Rgb(255, 117, 127),            // #ff757f
+        cursor_bg: Color::Rgb(47, 51, 77),           // #2f334d
+        picker_border: Color::Rgb(57, 75, 112),      // #394b70
+        picker_accent: Color::Rgb(130, 170, 255),    // #82aaff
         picker_directory: Color::Rgb(101, 188, 255), // #65bcff
-        picker_matched: Color::Rgb(192, 153, 255), // #c099ff
-        picker_loading: Color::Rgb(134, 225, 252), // #86e1fc
-        picker_recent: Color::Rgb(255, 199, 119),  // #ffc777
+        picker_matched: Color::Rgb(192, 153, 255),   // #c099ff
+        picker_loading: Color::Rgb(134, 225, 252),   // #86e1fc
+        picker_recent: Color::Rgb(255, 199, 119),    // #ffc777
         labels: CategoryLabels {
-            bugs: Color::Rgb(255, 117, 127),       // #ff757f
-            features: Color::Rgb(195, 232, 141),   // #c3e88d
-            improvements: Color::Rgb(192, 153, 255),// #c099ff
-            refactor: Color::Rgb(255, 199, 119),   // #ffc777
-            docs: Color::Rgb(130, 170, 255),       // #82aaff
-            chore: Color::Rgb(99, 109, 166),       // #636da6
-            data: Color::Rgb(79, 214, 190),        // #4fd6be
-            model: Color::Rgb(252, 167, 234),      // #fca7ea
-            experiment: Color::Rgb(255, 150, 108),  // #ff966c
+            bugs: Color::Rgb(255, 117, 127),         // #ff757f
+            features: Color::Rgb(195, 232, 141),     // #c3e88d
+            improvements: Color::Rgb(192, 153, 255), // #c099ff
+            refactor: Color::Rgb(255, 199, 119),     // #ffc777
+            docs: Color::Rgb(130, 170, 255),         // #82aaff
+            chore: Color::Rgb(99, 109, 166),         // #636da6
+            data: Color::Rgb(79, 214, 190),          // #4fd6be
+            model: Color::Rgb(252, 167, 234),        // #fca7ea
+            experiment: Color::Rgb(255, 150, 108),   // #ff966c
         },
     }
 }
@@ -161,9 +161,8 @@ impl ThemeConfig {
                 .unwrap_or(fallback)
         };
 
-        let conventional = |name: &str, fallback: Color| -> Color {
-            resolve_color(name, p).unwrap_or(fallback)
-        };
+        let conventional =
+            |name: &str, fallback: Color| -> Color { resolve_color(name, p).unwrap_or(fallback) };
         let background = r(
             ui.map(|u| &u.background),
             conventional("bg", base.background),
@@ -276,8 +275,24 @@ mod tests {
 
     #[test]
     fn tokyo_night_moon_uses_distinct_core_roles() {
-        let config: ThemeConfig =
-            toml::from_str(include_str!("../themes/tokyo-night-moon.toml")).unwrap();
+        let config: ThemeConfig = toml::from_str(
+            r##"
+            [colors]
+            magenta = "#c099ff"
+            blue = "#82aaff"
+            cyan = "#86e1fc"
+            green = "#c3e88d"
+
+            [ui]
+            accent = "magenta"
+            selection = "blue"
+            key = "cyan"
+
+            [labels]
+            features = "green"
+            "##,
+        )
+        .unwrap();
         let theme = config.resolve(&default_theme());
 
         assert_eq!(theme.accent, Color::Rgb(192, 153, 255));

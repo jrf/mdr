@@ -78,12 +78,12 @@ fn main() -> io::Result<()> {
     let stdin_is_pipe = !io::stdin().is_terminal();
 
     let cfg = config::load_config();
-    let theme_configs = config::load_theme_configs();
+    let theme_configs = config::load_theme_configs(&cfg);
     let themes = theme::resolve_themes(&theme_configs);
-    let initial_theme = cfg.theme.as_deref()
+    let initial_theme = config::configured_theme_name(&cfg)
+        .as_deref()
         .and_then(|name| theme::find_theme(&themes, name))
         .map(|(idx, _)| idx)
-        .or_else(|| theme::find_theme(&themes, "tokyo night moon").map(|(idx, _)| idx))
         .unwrap_or(0);
 
     let mut state = if stdin_is_pipe {
