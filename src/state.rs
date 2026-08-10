@@ -661,7 +661,11 @@ impl Tab {
 
     pub fn search_first(&mut self) {
         if !self.search_matches.is_empty() {
-            if let Some(idx) = self.search_matches.iter().position(|&l| l >= self.scroll) {
+            if let Some(idx) = self
+                .search_matches
+                .iter()
+                .position(|&line| line >= self.cursor)
+            {
                 self.search_current = idx;
             } else {
                 self.search_current = 0;
@@ -1080,4 +1084,50 @@ fn filter_task_lines(lines: Vec<StyledLine<'static>>) -> Vec<StyledLine<'static>
     }
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Tab;
+    use crate::theme::default_theme;
+
+    fn searchable_tab() -> Tab {
+        let mut tab = Tab::new_stdin(
+            "needle first\none\ntwo\nneedle nearest\nfour\nneedle last\nsix\nseven".into(),
+            default_theme(),
+        );
+        tab.search_query = "needle".into();
+        tab.update_search();
+        tab
+    }
+
+    #[test]
+    fn search_starts_at_nearest_forward_match() {
+        let mut tab = searchable_tab();
+        tab.cursor = 2;
+
+        tab.search_first();
+
+        assert_eq!(tab.cursor, 3);
+        assert_eq!(tab.search_current, 1);
+
+        tab.cursor = 7;
+        tab.search_first();
+        assert_eq!(tab.cursor, 0);
+        assert_eq!(tab.search_current, 0);
+    }
+
+    #[test]
+    fn search_navigation_wraps_in_both_directions() {
+        let mut tab = searchable_tab();
+        tab.cursor = 3;
+        tab.search_first();
+
+        tab.search_next();
+        assert_eq!(tab.cursor, 5);
+        tab.search_next();
+        assert_eq!(tab.cursor, 0);
+        tab.search_prev();
+        assert_eq!(tab.cursor, 5);
+    }
 }
