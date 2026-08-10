@@ -182,7 +182,9 @@ fn draw_reader(f: &mut Frame, state: &mut AppState) {
             if is_cursor_line || is_wrap_companion {
                 let cursor_style = Style::default().bg(theme.cursor_bg);
                 for span in &mut line.spans {
-                    span.style = span.style.bg(theme.cursor_bg);
+                    if span.style.bg != Some(theme.selection) {
+                        span.style = span.style.bg(theme.cursor_bg);
+                    }
                 }
                 // Pad to full width so the highlight spans the line
                 let content_width: usize = line.spans.iter().map(|s| s.content.width()).sum();
@@ -1156,6 +1158,33 @@ mod tests {
         let buffer = terminal.backend().buffer();
         let (key_x, key_y) = find_text(buffer, "j / Down").expect("help key");
         assert_eq!(buffer[(key_x, key_y)].fg, theme.key);
+    }
+
+    #[test]
+    fn search_match_retains_contrast_on_cursor_line() {
+        let theme = default_theme();
+        let mut state = AppState::new_reader(
+            PathBuf::from("synthetic.md"),
+            "LaTeX math".into(),
+            0,
+            vec![("test".into(), theme)],
+            false,
+        );
+        state.tab_mut().search_query = "math".into();
+        state.tab_mut().update_search();
+        state.tab_mut().search_first();
+        let mut terminal = Terminal::new(TestBackend::new(60, 10)).expect("test terminal");
+
+        terminal
+            .draw(|frame| draw(frame, &mut state))
+            .expect("draw search match");
+        let buffer = terminal.backend().buffer();
+        let (match_x, match_y) = find_text(buffer, "math").expect("search match");
+        let (line_x, line_y) = find_text(buffer, "LaTeX").expect("cursor line");
+
+        assert_eq!(buffer[(match_x, match_y)].fg, theme.background_dark);
+        assert_eq!(buffer[(match_x, match_y)].bg, theme.selection);
+        assert_eq!(buffer[(line_x, line_y)].bg, theme.cursor_bg);
     }
 
     #[test]
