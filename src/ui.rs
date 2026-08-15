@@ -412,9 +412,9 @@ fn draw_file_picker(f: &mut Frame, state: &AppState) {
     .split(inner);
 
     // Filter input
-    let filter_line = if state.browser.filter.is_empty() {
+    let filter_line = if !state.browser.filtering {
         Line::from(Span::styled(
-            " type to filter...",
+            " press / to filter",
             Style::default()
                 .fg(theme.text_dim)
                 .bg(theme.background_dark),
@@ -422,7 +422,7 @@ fn draw_file_picker(f: &mut Frame, state: &AppState) {
     } else {
         Line::from(vec![
             Span::styled(
-                " > ",
+                " / ",
                 Style::default()
                     .fg(theme.picker_accent)
                     .bg(theme.background_dark),
@@ -431,6 +431,12 @@ fn draw_file_picker(f: &mut Frame, state: &AppState) {
                 state.browser.filter.clone(),
                 Style::default()
                     .fg(theme.text)
+                    .bg(theme.background_dark),
+            ),
+            Span::styled(
+                "▏",
+                Style::default()
+                    .fg(theme.picker_accent)
                     .bg(theme.background_dark),
             ),
         ])
@@ -503,7 +509,11 @@ fn draw_file_picker(f: &mut Frame, state: &AppState) {
     };
     f.render_widget(
         Paragraph::new(picker_hint_line(
-            &[("enter", "open"), ("esc", "close")],
+            if state.browser.filtering {
+                &[("enter", "open"), ("esc", "clear")]
+            } else {
+                &[("j/k", "move"), ("enter", "open"), ("/", "filter"), ("esc", "close")]
+            },
             status,
             theme,
         ))

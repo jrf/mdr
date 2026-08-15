@@ -90,6 +90,8 @@ pub struct BrowserState {
     pub selected: usize,
     pub scroll_offset: usize,
     pub filter: String,
+    /// True while the user is actively typing a filter (started with `/`).
+    pub filtering: bool,
     pub filtered_indices: Vec<usize>,
     root_dir: PathBuf,
     recents: Vec<PathBuf>,
@@ -108,6 +110,7 @@ impl BrowserState {
             selected: 0,
             scroll_offset: 0,
             filter: String::new(),
+            filtering: false,
             filtered_indices: Vec::new(),
             root_dir: dir,
             recents: Vec::new(),
@@ -131,6 +134,7 @@ impl BrowserState {
     pub fn load_dir(&mut self) {
         self.entries.clear();
         self.filter.clear();
+        self.filtering = false;
         self.recursive_loaded = false;
         self.recursive_rx = None;
 
@@ -271,6 +275,38 @@ impl BrowserState {
             }
         }
         false
+    }
+
+    /// Begin interactive filtering (triggered by `/`).
+    pub fn start_filtering(&mut self) {
+        self.filtering = true;
+    }
+
+    /// Stop filtering and clear the current filter text.
+    pub fn stop_filtering(&mut self) {
+        self.filtering = false;
+        self.filter.clear();
+        self.rebuild_filter();
+        self.selected = 0;
+        self.scroll_offset = 0;
+    }
+
+    /// Append a character to the filter and refresh matches.
+    pub fn push_filter(&mut self, c: char) {
+        self.filter.push(c);
+        self.rebuild_filter();
+        self.selected = 0;
+        self.scroll_offset = 0;
+    }
+
+    /// Remove the last character of the filter; exits filtering if it empties.
+    pub fn pop_filter(&mut self) {
+        if self.filter.pop().is_none() {
+            self.filtering = false;
+        }
+        self.rebuild_filter();
+        self.selected = 0;
+        self.scroll_offset = 0;
     }
 
     pub fn rebuild_filter(&mut self) {
@@ -459,5 +495,46 @@ mod tests {
 
         browser.filter = "recent".to_string();
         assert_eq!(browser.recent_heading_index(), None);
+    }
+
+    #[test]
+    fn filtering_starts_and_stops_via_helpers() {
+        let mut browser = BrowserState::new(PathBuf::from("synthetic"));
+        browser.entries = vec![
+            BrowserEntry {
+                name: "alpha.md".to_string(),
+                path: PathBuf::from("/synthetic/alpha.md"),
+                is_dir: false,
+                is_recent: false,
+            },
+            BrowserEntry {
+                name: "beta.md".to_string(),
+                path: PathBuf::from("/synthetic/beta.md"),
+                is_dir: false,
+                is_recent: false,
+            },
+        ];
+        browser.rebuild_filter();
+        assert!(!browser.filtering);
+
+        browser.start_filtering();
+        assert!(browser.filtering);
+        browser.push_filter('b');
+        assert_eq!(browser.filter, "b");
+        assert_eq!(browser.filtered_indices, vec![1]);
+
+        // Backspacing empties the filter but stays in filtering mode…
+        browser.pop_filter();
+        assert!(browser.filtering);
+        assert!(browser.filter.is_empty());
+        // …a further backspace on the empty filter exits filtering.
+        browser.pop_filter();
+        assert!(!browser.filtering);
+
+        browser.start_filtering();
+        browser.push_filter('a');
+        browser.stop_filtering();
+        assert!(!browser.filtering);
+        assert!(browser.filter.is_empty());
     }
 }

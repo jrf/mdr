@@ -9,7 +9,7 @@ A terminal markdown reader with live file watching.
 - Renders markdown with styled headings, bold, italic, code blocks, blockquotes, lists, task lists, horizontal rules, and `[[wikilinks]]`
 - Live reload — file changes are reflected instantly
 - Vim-style scrolling (`j`/`k`, `g`/`G`, `Ctrl-f`/`Ctrl-b`)
-- Layered, theme-driven file picker with recent files — press `f`, fuzzy-filter recursively, and press Enter to open
+- Layered, theme-driven file picker with recent files — press `f`, then `/` to fuzzy-filter recursively, and press Enter to open
 - Search — `/` to search, `n`/`N` to cycle matches
 - Multiple color themes, cycled with `t`
 - External editor — press `e` to open in `$EDITOR`
@@ -40,6 +40,9 @@ cat file.md | mdr       # read from stdin
 The picker keeps up to 50 recently opened markdown files in
 `$XDG_CACHE_HOME/mdr/recent` (or `~/.cache/mdr/recent`) and shows valid entries
 newest-first under “Most Recent,” with their parent directories shown for context.
+Inside the picker, `j`/`k` (or arrow keys), `Ctrl-b`/`Ctrl-f`, and `Home`/`End`
+(or `g`/`G`) move the selection, `/` starts fuzzy-filtering, `Esc` clears the
+filter (or closes the picker), and `Enter` opens the selection.
 
 ### Keybindings
 

@@ -343,15 +343,14 @@ fn main() -> io::Result<()> {
                                         }
                                     }
                                     KeyCode::Esc => {
-                                        state.browser.filter.clear();
-                                        state.browser.rebuild_filter();
-                                        state.mode = AppMode::Reader;
+                                        if state.browser.filtering {
+                                            state.browser.stop_filtering();
+                                        } else {
+                                            state.mode = AppMode::Reader;
+                                        }
                                     }
-                                    KeyCode::Backspace => {
-                                        state.browser.filter.pop();
-                                        state.browser.rebuild_filter();
-                                        state.browser.selected = 0;
-                                        state.browser.scroll_offset = 0;
+                                    KeyCode::Backspace if state.browser.filtering => {
+                                        state.browser.pop_filter();
                                     }
                                     KeyCode::Char('j') if ctrl => {
                                         state.browser.select_down();
@@ -363,11 +362,46 @@ fn main() -> io::Result<()> {
                                         let h = (terminal.size()?.height as usize * 3 / 4).saturating_sub(4);
                                         state.browser.adjust_scroll(h);
                                     }
-                                    KeyCode::Char(c) => {
-                                        state.browser.filter.push(c);
-                                        state.browser.rebuild_filter();
+                                    KeyCode::Char('f') if ctrl => {
+                                        let h = (terminal.size()?.height as usize * 3 / 4).saturating_sub(4);
+                                        let len = state.browser.filtered_indices.len();
+                                        if len > 0 {
+                                            state.browser.selected = (state.browser.selected + h).min(len - 1);
+                                        }
+                                        state.browser.adjust_scroll(h);
+                                    }
+                                    KeyCode::Char('b') if ctrl => {
+                                        let h = (terminal.size()?.height as usize * 3 / 4).saturating_sub(4);
+                                        state.browser.selected = state.browser.selected.saturating_sub(h);
+                                        state.browser.adjust_scroll(h);
+                                    }
+                                    KeyCode::Char('j') if !state.browser.filtering => {
+                                        state.browser.select_down();
+                                        let h = (terminal.size()?.height as usize * 3 / 4).saturating_sub(4);
+                                        state.browser.adjust_scroll(h);
+                                    }
+                                    KeyCode::Char('k') if !state.browser.filtering => {
+                                        state.browser.select_up();
+                                        let h = (terminal.size()?.height as usize * 3 / 4).saturating_sub(4);
+                                        state.browser.adjust_scroll(h);
+                                    }
+                                    KeyCode::Char('g') if !state.browser.filtering => {
                                         state.browser.selected = 0;
                                         state.browser.scroll_offset = 0;
+                                    }
+                                    KeyCode::Char('G') if !state.browser.filtering => {
+                                        let len = state.browser.filtered_indices.len();
+                                        if len > 0 {
+                                            state.browser.selected = len - 1;
+                                        }
+                                        let h = (terminal.size()?.height as usize * 3 / 4).saturating_sub(4);
+                                        state.browser.adjust_scroll(h);
+                                    }
+                                    KeyCode::Char('/') if !state.browser.filtering => {
+                                        state.browser.start_filtering();
+                                    }
+                                    KeyCode::Char(c) if state.browser.filtering => {
+                                        state.browser.push_filter(c);
                                     }
                                     _ => needs_redraw = false,
                                 },
